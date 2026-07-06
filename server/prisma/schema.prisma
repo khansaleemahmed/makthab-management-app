@@ -1,0 +1,190 @@
+// Makthab v2 — Prisma schema (single source of truth for all models).
+// Derived from Madrasa_React_TS_Architecture.docx §7.1 plus a User/auth model.
+// Provider is the only line that changes for a PostgreSQL migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Student {
+  id             Int       @id @default(autoincrement())
+  admissionNo    String    @unique
+  fullName       String
+  fatherName     String
+  dateOfBirth    DateTime?
+  gender         String
+  contactNo      String
+  whatsappNo     String
+  address        String?
+  classId        Int
+  academicYearId Int
+  photoPath      String?
+  notes          String? // free-text: occupation, school name, previous studies, etc.
+  legacyBillNo   String? // original Google Sheet bill number, preserved for reference
+  status         String    @default("active")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  class        Class        @relation(fields: [classId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  feePayments  FeePayment[]
+  attendance   Attendance[]
+
+  @@index([classId])
+  @@index([academicYearId])
+  @@index([status])
+}
+
+model FeePayment {
+  id            Int      @id @default(autoincrement())
+  receiptNo     String   @unique
+  studentId     Int
+  feeType       String
+  feeMonth      Int?
+  feeYear       Int
+  amountDue     Float
+  amountPaid    Float
+  paymentDate   DateTime
+  paymentMethod String
+  waiverAmount  Float    @default(0)
+  pdfPath       String?
+  whatsappSent  Boolean  @default(false)
+  collectedById Int
+  createdAt     DateTime @default(now())
+
+  student     Student @relation(fields: [studentId], references: [id])
+  collectedBy Staff   @relation(fields: [collectedById], references: [id])
+
+  @@index([studentId])
+  @@index([feeYear, feeMonth])
+}
+
+model Attendance {
+  id         Int      @id @default(autoincrement())
+  studentId  Int
+  date       DateTime
+  status     String
+  notes      String?
+  markedById Int
+  createdAt  DateTime @default(now())
+
+  student  Student @relation(fields: [studentId], references: [id])
+  markedBy Staff   @relation(fields: [markedById], references: [id])
+
+  @@unique([studentId, date])
+  @@index([date])
+}
+
+model Expense {
+  id              Int      @id @default(autoincrement())
+  voucherNo       String   @unique
+  categoryId      Int
+  amount          Float
+  expenseDate     DateTime
+  payee           String
+  description     String?
+  receiptScanPath String?
+  approvedById    Int
+  createdAt       DateTime @default(now())
+
+  category   ExpenseCategory @relation(fields: [categoryId], references: [id])
+  approvedBy Staff           @relation(fields: [approvedById], references: [id])
+
+  @@index([categoryId])
+  @@index([expenseDate])
+}
+
+model Staff {
+  id           Int      @id @default(autoincrement())
+  fullName     String
+  role         String
+  baseSalary   Float
+  contactNo    String
+  whatsappNo   String
+  status       String   @default("active")
+  createdAt    DateTime @default(now())
+
+  user            User?
+  salaries        SalaryPayment[]
+  feesCollected   FeePayment[]
+  attendanceMarked Attendance[]
+  expensesApproved Expense[]
+  classesTaught   Class[]
+}
+
+// Application login account. Every user is linked to a Staff record (the actor
+// referenced by FeePayment.collectedBy, Attendance.markedBy, Expense.approvedBy).
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  role         String // Admin | Accountant | Teacher
+  staffId      Int      @unique
+  status       String   @default("active")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  staff Staff @relation(fields: [staffId], references: [id])
+}
+
+model SalaryPayment {
+  id             Int      @id @default(autoincrement())
+  staffId        Int
+  salaryMonth    Int
+  salaryYear     Int
+  grossAmount    Float
+  deductions     Float    @default(0)
+  netAmount      Float
+  paymentDate    DateTime
+  payslipPdfPath String?
+  whatsappSent   Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  staff Staff @relation(fields: [staffId], references: [id])
+
+  @@unique([staffId, salaryMonth, salaryYear])
+}
+
+model Class {
+  id        Int    @id @default(autoincrement())
+  name      String @unique
+  teacherId Int?
+
+  teacher  Staff?    @relation(fields: [teacherId], references: [id])
+  students Student[]
+}
+
+model AcademicYear {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(false)
+
+  students       Student[]
+  feeStructures  FeeStructure[]
+}
+
+model ExpenseCategory {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  expenses Expense[]
+}
+
+// Fee amount per class + academic year (backs GET/POST /fees/structures).
+model FeeStructure {
+  id             Int    @id @default(autoincrement())
+  classId        Int
+  academicYearId Int
+  feeType        String
+  amount         Float
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([classId, academicYearId, feeType])
+}

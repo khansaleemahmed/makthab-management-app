@@ -1,0 +1,108 @@
+# ===========================================================================
+# Makthab — .gitignore
+# Monorepo: packages/shared (Zod), server (Express+Prisma+SQLite), client (Vite)
+# ===========================================================================
+
+# --- Dependencies ----------------------------------------------------------
+node_modules/
+**/node_modules/
+# Stray backups left by tooling (e.g. node_modules_old_1594558340/)
+node_modules_old_*/
+.pnp
+.pnp.js
+.npm/
+.pnpm-store/
+
+# --- Build output ----------------------------------------------------------
+dist/
+**/dist/
+build/
+out/
+.vite/
+*.tsbuildinfo
+**/.tmp/
+# Compiled shared package (rebuilt via `npm run build -w packages/shared`)
+packages/shared/dist/
+
+# --- Environment / secrets -------------------------------------------------
+# Ignore real env files everywhere; keep the committed *.example / *.sample
+# templates (incl. .env.local.example).
+.env
+.env.*
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env*.example
+!**/.env*.sample
+
+# --- Databases & generated runtime data ------------------------------------
+# SQLite dev/test databases and their WAL/journal sidecars
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/madrasa.db
+data/*.db*
+server/test.db
+server/prisma/*.db*
+server/prisma/dev.db*
+
+# Generated documents (receipts, payslips, reports, photos) and backups.
+# Ignore the contents but keep the folder structure via .gitkeep markers.
+# (Re-include directories so git can descend and see the .gitkeep files.)
+data/files/**
+!data/files/**/
+!data/files/**/.gitkeep
+data/backups/
+data/output/*
+
+# --- Prisma ----------------------------------------------------------------
+# Generated client lives under node_modules (already ignored); this covers
+# any local generator output too.
+**/.prisma/
+prisma/generated/
+
+# --- Logs ------------------------------------------------------------------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Testing / coverage ----------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+
+# --- Python (legacy backend) -----------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# --- Editor / OS -----------------------------------------------------------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.idea/
+*.swp
+*.swo
+*~
+# Keep committed workspace file (MarthabApp.code-workspace) but ignore local VS Code state
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# --- Claude Code -----------------------------------------------------------
+# Keep shared project config (.claude/settings.json, agents, skills);
+# ignore per-user local overrides.
+.claude/settings.local.json

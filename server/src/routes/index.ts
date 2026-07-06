@@ -1,0 +1,28 @@
+import { Router } from "express";
+import { authRouter } from "./auth";
+import { studentsRouter } from "./students";
+import { feesRouter } from "./fees";
+import { attendanceRouter } from "./attendance";
+import { expensesRouter, staffRouter, salariesRouter } from "./finance";
+import { reportsRouter } from "./reports";
+import { referenceRouter } from "./reference";
+import { dashboardRouter } from "./dashboard";
+import { adminRouter } from "./admin";
+
+// Aggregate router for /api/v1. Every domain from doc §6 is mounted here.
+export const apiRouter = Router();
+
+apiRouter.use("/auth", authRouter);
+apiRouter.use("/students", studentsRouter);
+apiRouter.use("/fees", feesRouter);
+apiRouter.use("/attendance", attendanceRouter);
+apiRouter.use("/expenses", expensesRouter);
+apiRouter.use("/staff", staffRouter);
+apiRouter.use("/salaries", salariesRouter);
+apiRouter.use("/reports", reportsRouter);
+apiRouter.use("/dashboard", dashboardRouter);
+apiRouter.use("/admin", adminRouter);
+
+// Reference/lookup endpoints (classes, academic-years, expense-categories)
+// live at the /api/v1 root.
+apiRouter.use("/", referenceRouter);
