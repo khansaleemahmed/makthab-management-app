@@ -17,7 +17,14 @@ export interface PdfDoc {
   /** Key/value lines (receipts) or plain strings (notes). */
   lines?: Array<[string, string] | string>;
   /** Tabular data (reports). Rendered after `lines`. */
-  table?: { headers: string[]; rows: Array<Array<string | number>> };
+  table?: {
+    headers: string[];
+    rows: Array<Array<string | number>>;
+    /** 0-based header indexes holding currency amounts — formatted with a Rs. prefix (PDF text is ASCII-only). */
+    currencyCols?: number[];
+    /** Append a bold "Total" row summing each currencyCols column after the last data row. */
+    totalsRow?: boolean;
+  };
   /** Footer note centred at the bottom of the last page. */
   footer?: string;
 }
@@ -50,6 +57,13 @@ function toAscii(s: string): string {
 
 function esc(s: string): string {
   return toAscii(s).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+// PDF text is ASCII-only (see toAscii above), so the ₹ glyph is written out
+// and toAscii maps it to "Rs." at render time — kept as a real ₹ char here so
+// the mapping stays in one place.
+function formatCurrency(n: number): string {
+  return "₹" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function truncate(s: string, maxChars: number): string {
@@ -94,18 +108,31 @@ function layout(doc: PdfDoc): Cmd[][] {
 
   if (doc.table && doc.table.headers.length > 0) {
     y -= 8;
-    const cols = doc.table.headers.length;
+    const { headers, rows, currencyCols = [], totalsRow = false } = doc.table;
+    const cols = headers.length;
     const colW = CONTENT_W / cols;
     const maxChars = Math.max(4, Math.floor(colW / 6));
+    const fmt = (v: string | number, i: number) =>
+      currencyCols.includes(i) && typeof v === "number" ? formatCurrency(v) : String(v);
     const drawRow = (cells: Array<string | number>, bold: boolean) => {
       if (y - 16 < MARGIN_BOTTOM) newPage();
       cells.forEach((c, i) => {
-        cellAt(truncate(String(c), maxChars), 10, bold, MARGIN_X + i * colW);
+        cellAt(truncate(fmt(c, i), maxChars), 10, bold, MARGIN_X + i * colW);
       });
       y -= 16;
     };
-    drawRow(doc.table.headers, true);
-    for (const row of doc.table.rows) drawRow(row, false);
+    drawRow(headers, true);
+    for (const row of rows) drawRow(row, false);
+    if (totalsRow && currencyCols.length > 0) {
+      const totals: Array<string | number> = headers.map((_, i) =>
+        currencyCols.includes(i)
+          ? rows.reduce((sum, r) => sum + (Number(r[i]) || 0), 0)
+          : i === 0
+            ? "Total"
+            : ""
+      );
+      drawRow(totals, true);
+    }
   }
 
   if (doc.footer) {

@@ -13,6 +13,11 @@ export function createApp(): Express {
     cors({
       origin: env.clientOrigin,
       credentials: true,
+      // Without this, Content-Disposition is invisible to browser JS on
+      // cross-origin responses (it's not in the CORS "simple headers"
+      // allowlist), so client/src/lib/download.ts can never read the
+      // server's real filename and silently falls back to a generic one.
+      exposedHeaders: ["Content-Disposition"],
     })
   );
   app.use(express.json());
