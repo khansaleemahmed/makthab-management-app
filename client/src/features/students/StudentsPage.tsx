@@ -25,6 +25,7 @@ import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { useStudents, useDeleteStudent, downloadAdmissionLetter } from './api';
 import { StudentForm } from './StudentForm';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type { Student } from '@/types/domain';
 
 export function StudentsPage() {
@@ -32,9 +33,10 @@ export function StudentsPage() {
   const { toast } = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
+  const [deleting, setDeleting] = useState<Student | null>(null);
   const [search, setSearch] = useState('');
   const [classId, setClassId] = useState<string>('all');
-  const [status, setStatus] = useState<string>('all');
+  const [status, setStatus] = useState<string>('active');
   const q = useDebounce(search);
   const role = useAuthStore((s) => s.user?.role);
   const academicYearId = useUiStore((s) => s.academicYearId);
@@ -61,9 +63,13 @@ export function StudentsPage() {
     setFormOpen(true);
   };
 
-  const handleDelete = (s: Student) => {
-    del.mutate(s.id, {
-      onSuccess: () => toast({ title: t('common.delete'), variant: 'success' }),
+  const confirmDelete = () => {
+    if (!deleting) return;
+    del.mutate(deleting.id, {
+      onSuccess: () => {
+        toast({ title: t('students.deleted'), variant: 'success' });
+        setDeleting(null);
+      },
       onError: (err) => toast({ title: extractApiError(err).message, variant: 'destructive' }),
     });
   };
@@ -176,8 +182,7 @@ export function StudentsPage() {
                               variant="ghost"
                               size="icon"
                               title={t('common.delete')}
-                              onClick={() => handleDelete(s)}
-                              disabled={del.isPending}
+                              onClick={() => setDeleting(s)}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -199,6 +204,19 @@ export function StudentsPage() {
       </Card>
 
       <StudentForm open={formOpen} onOpenChange={setFormOpen} student={editing} />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+        onConfirm={confirmDelete}
+        title={t('students.confirmDeleteTitle')}
+        message={t('students.confirmDelete', { name: deleting?.fullName ?? '' })}
+        confirmLabel={t('common.delete')}
+        destructive
+        pending={del.isPending}
+      />
     </>
   );
 }

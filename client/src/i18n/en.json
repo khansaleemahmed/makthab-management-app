@@ -22,6 +22,7 @@
     "edit": "Edit",
     "save": "Save",
     "cancel": "Cancel",
+    "confirm": "Confirm",
     "delete": "Delete",
     "actions": "Actions",
     "loading": "Loading…",
@@ -80,7 +81,10 @@
     "admissionLetter": "Admission Letter",
     "created": "Student admitted successfully",
     "edit": "Edit Student",
-    "updated": "Student updated successfully"
+    "updated": "Student updated successfully",
+    "deleted": "Student deleted successfully",
+    "confirmDeleteTitle": "Delete Student",
+    "confirmDelete": "Delete {{name}}? This cannot be undone."
   },
   "classes": {
     "title": "Classes",

@@ -141,7 +141,11 @@ studentsRouter.patch(
   })
 );
 
-// DELETE /students/:id — soft delete (status = inactive).
+// DELETE /students/:id — soft delete (status = inactive). Admin only.
+// Deleting an already-inactive student is a deliberate idempotent no-op that
+// still returns 200 with the same shape (not a 409): the confirm-then-delete
+// UX never shows a delete action on an already-deleted row, so a repeat call
+// (double-click, retry) should succeed quietly rather than surface an error.
 studentsRouter.delete(
   "/:id",
   requireRole("Admin"),
