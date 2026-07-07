@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Search, FileText, Trash2 } from 'lucide-react';
+import { Plus, Search, FileText, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,7 @@ export function StudentsPage() {
   const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Student | null>(null);
   const [search, setSearch] = useState('');
   const [classId, setClassId] = useState<string>('all');
   const [status, setStatus] = useState<string>('all');
@@ -49,6 +50,16 @@ export function StudentsPage() {
   });
 
   const canManage = role === 'Admin';
+
+  const openCreate = () => {
+    setEditing(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (s: Student) => {
+    setEditing(s);
+    setFormOpen(true);
+  };
 
   const handleDelete = (s: Student) => {
     del.mutate(s.id, {
@@ -71,7 +82,7 @@ export function StudentsPage() {
         title={t('students.title')}
         actions={
           canManage && (
-            <Button onClick={() => setFormOpen(true)}>
+            <Button onClick={openCreate}>
               <Plus className="h-4 w-4" />
               {t('students.admit')}
             </Button>
@@ -152,15 +163,25 @@ export function StudentsPage() {
                           <FileText className="h-4 w-4" />
                         </Button>
                         {canManage && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title={t('common.delete')}
-                            onClick={() => handleDelete(s)}
-                            disabled={del.isPending}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title={t('common.edit')}
+                              onClick={() => openEdit(s)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title={t('common.delete')}
+                              onClick={() => handleDelete(s)}
+                              disabled={del.isPending}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </TableCell>
@@ -177,7 +198,7 @@ export function StudentsPage() {
         </CardContent>
       </Card>
 
-      <StudentForm open={formOpen} onOpenChange={setFormOpen} />
+      <StudentForm open={formOpen} onOpenChange={setFormOpen} student={editing} />
     </>
   );
 }

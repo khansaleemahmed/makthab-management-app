@@ -59,6 +59,29 @@ export function useUpdateStudent(id: number) {
   });
 }
 
+/**
+ * Upload a student's photograph (multipart, field "photo"; Admin-only endpoint).
+ * The student must already exist, so callers pass the id at mutate time —
+ * this lets the same hook serve edit mode and the post-admit chain in create mode.
+ */
+export function useUploadStudentPhoto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: number; file: File }) => {
+      const form = new FormData();
+      form.append('photo', file);
+      const res = await api.post(`/students/${id}/photo`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return unwrap<Student>(res.data);
+    },
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ['students'] });
+      qc.invalidateQueries({ queryKey: ['student', id] });
+    },
+  });
+}
+
 export function useDeleteStudent() {
   const qc = useQueryClient();
   return useMutation({

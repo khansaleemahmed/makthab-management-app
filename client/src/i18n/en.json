@@ -12,7 +12,8 @@
     "staff": "Staff",
     "salaries": "Salaries",
     "reports": "Reports",
-    "finance": "Finance"
+    "finance": "Finance",
+    "classes": "Classes"
   },
   "common": {
     "search": "Search",
@@ -77,7 +78,18 @@
     "class": "Class",
     "photo": "Photo",
     "admissionLetter": "Admission Letter",
-    "created": "Student admitted successfully"
+    "created": "Student admitted successfully",
+    "edit": "Edit Student",
+    "updated": "Student updated successfully"
+  },
+  "classes": {
+    "title": "Classes",
+    "add": "Add Class",
+    "edit": "Edit Class",
+    "name": "Class Name",
+    "teacher": "Teacher",
+    "created": "Class added successfully",
+    "updated": "Class updated successfully"
   },
   "fees": {
     "title": "Fees",

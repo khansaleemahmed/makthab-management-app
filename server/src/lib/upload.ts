@@ -1,0 +1,76 @@
+import path from "node:path";
+import multer, { MulterError } from "multer";
+import type { NextFunction, Request, Response } from "express";
+import { PHOTOS_DIR, ensureDir } from "./paths";
+import { prisma } from "./prisma";
+import { AppError } from "../middleware/errorHandler";
+
+// Accepted image mimetypes → canonical extension.
+const ALLOWED_TYPES = new Map<string, string>([
+  ["image/jpeg", ".jpg"],
+  ["image/png", ".png"],
+  ["image/webp", ".webp"],
+]);
+
+const MAX_BYTES = 3 * 1024 * 1024; // ~3MB
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, ensureDir(PHOTOS_DIR));
+  },
+  filename: (req, file, cb) => {
+    // Derive the filename from the student's admissionNo. Looking the student up
+    // here also lets us reject unknown ids before any bytes hit disk.
+    void (async () => {
+      const id = Number(req.params.id);
+      const student = await prisma.student.findUnique({
+        where: { id },
+        select: { admissionNo: true },
+      });
+      if (!student) {
+        return cb(new AppError(404, "not_found", "Student not found"), "");
+      }
+      const ext = ALLOWED_TYPES.get(file.mimetype) ?? path.extname(file.originalname);
+      const safeAdmission = student.admissionNo.replace(/[^a-zA-Z0-9_-]/g, "_");
+      cb(null, `${safeAdmission}-${Date.now()}${ext}`);
+    })().catch((err) => cb(err as Error, ""));
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_TYPES.has(file.mimetype)) {
+      return cb(new AppError(400, "invalid_file", "Only JPEG, PNG, or WebP images are allowed"));
+    }
+    cb(null, true);
+  },
+});
+
+// Runs multer.single("photo") and normalises multer's own rejections into
+// AppErrors so they surface as the standard 400 envelope, not a raw stack trace.
+export function uploadStudentPhoto(req: Request, res: Response, next: NextFunction) {
+  upload.single("photo")(req, res, (err: unknown) => {
+    if (err instanceof MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return next(new AppError(400, "file_too_large", "Photo must be 3MB or smaller"));
+      }
+      return next(new AppError(400, "upload_error", err.message));
+    }
+    if (err) return next(err);
+    next();
+  });
+}
+
+// Content-Type for streaming a stored photo back, inferred from its extension.
+export function photoContentType(filePath: string): string {
+  switch (path.extname(filePath).toLowerCase()) {
+    case ".png":
+      return "image/png";
+    case ".webp":
+      return "image/webp";
+    default:
+      return "image/jpeg";
+  }
+}

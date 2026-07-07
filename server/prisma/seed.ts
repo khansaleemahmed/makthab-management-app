@@ -17,8 +17,8 @@ async function main() {
     });
   }
 
-  // --- Classes: LKG, UKG, I, II, 1–7 ---
-  const classNames = ["LKG", "UKG", "I", "II", "1", "2", "3", "4", "5", "6", "7"];
+  // --- Classes: Madrasa curriculum stages ---
+  const classNames = ["Qaida", "Nazira", "Hifz"];
   for (const name of classNames) {
     await prisma.class.upsert({
       where: { name },
@@ -101,7 +101,7 @@ async function main() {
     },
   });
 
-  // --- Teacher Staff + User, assigned to Class "I" (for "own classes only" tests) ---
+  // --- Teacher Staff + User, assigned to Class "Nazira" (for "own classes only" tests) ---
   const teacherStaff = await prisma.staff.upsert({
     where: { id: 3 },
     update: {},
@@ -126,9 +126,9 @@ async function main() {
       staffId: teacherStaff.id,
     },
   });
-  // Assign the teacher to Class "I" so attendance access-control can be exercised.
+  // Assign the teacher to Class "Nazira" so attendance access-control can be exercised.
   await prisma.class.update({
-    where: { name: "I" },
+    where: { name: "Nazira" },
     data: { teacherId: teacherStaff.id },
   });
 

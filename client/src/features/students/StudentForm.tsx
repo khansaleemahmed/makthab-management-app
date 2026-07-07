@@ -1,4 +1,5 @@
-import { useForm } from 'react-hook-form';
+import { useEffect, useState, type ChangeEvent } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Field } from '@/components/form/Field';
 import { SelectField } from '@/components/form/SelectField';
 import { Spinner } from '@/components/ui/spinner';
@@ -17,21 +19,30 @@ import { useToast } from '@/components/ui/use-toast';
 import { studentCreateSchema, type StudentCreateInput } from '@/lib/schemas';
 import { useClasses, useAcademicYears } from '@/api/reference';
 import { useUiStore } from '@/store/uiStore';
-import { extractApiError } from '@/api/client';
-import { useAdmitStudent } from './api';
+import { api, extractApiError } from '@/api/client';
+import { useAdmitStudent, useUpdateStudent, useUploadStudentPhoto } from './api';
+import type { Student } from '@/types/domain';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  student?: Student | null;
 }
 
-export function StudentForm({ open, onOpenChange }: Props) {
+export function StudentForm({ open, onOpenChange, student }: Props) {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const isEdit = student != null;
   const admit = useAdmitStudent();
+  const update = useUpdateStudent(student?.id ?? 0);
+  const uploadPhoto = useUploadStudentPhoto();
+  const mutation = isEdit ? update : admit;
   const { data: classes } = useClasses();
   const { data: years } = useAcademicYears();
   const academicYearId = useUiStore((s) => s.academicYearId);
+
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const {
     register,
@@ -47,22 +58,87 @@ export function StudentForm({ open, onOpenChange }: Props) {
     } as Partial<StudentCreateInput> as StudentCreateInput,
   });
 
-  const onSubmit = handleSubmit((values) => {
-    admit.mutate(values, {
-      onSuccess: () => {
-        toast({ title: t('students.created'), variant: 'success' });
-        reset();
-        onOpenChange(false);
-      },
-      onError: (err) => toast({ title: extractApiError(err).message, variant: 'destructive' }),
-    });
+  useEffect(() => {
+    if (!open) return;
+    reset(
+      student
+        ? ({
+            admissionNo: student.admissionNo,
+            fullName: student.fullName,
+            fatherName: student.fatherName,
+            dateOfBirth: student.dateOfBirth?.slice(0, 10),
+            gender: student.gender,
+            contactNo: student.contactNo,
+            whatsappNo: student.whatsappNo,
+            address: student.address ?? undefined,
+            classId: student.classId,
+            academicYearId: student.academicYearId,
+            status: student.status === 'inactive' ? 'inactive' : 'active',
+          } as StudentCreateInput)
+        : ({
+            gender: 'male',
+            academicYearId: academicYearId ?? undefined,
+            status: 'active',
+          } as Partial<StudentCreateInput> as StudentCreateInput),
+    );
+  }, [open, student, academicYearId, reset]);
+
+  // Load an existing student's photo for the preview (authed blob fetch — a plain
+  // <img src> can't send the Bearer token). Clears any locally-picked file first.
+  useEffect(() => {
+    if (!open) return;
+    setPhotoFile(null);
+    setPreviewUrl(null);
+    if (!student?.photoPath) return;
+    let active = true;
+    api
+      .get(`/students/${student.id}/photo`, { responseType: 'blob' })
+      .then((res) => {
+        if (active) setPreviewUrl(URL.createObjectURL(res.data as Blob));
+      })
+      .catch(() => {
+        /* no photo / not found — leave preview empty */
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, student]);
+
+  // Revoke the previous object URL whenever the preview changes or on unmount.
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  function onPhotoChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+    setPhotoFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  }
+
+  const onSubmit = handleSubmit(async (values) => {
+    try {
+      const saved = isEdit
+        ? await update.mutateAsync(values)
+        : await admit.mutateAsync(values);
+      if (photoFile) {
+        await uploadPhoto.mutateAsync({ id: saved.id, file: photoFile });
+      }
+      toast({ title: t(isEdit ? 'students.updated' : 'students.created'), variant: 'success' });
+      reset();
+      onOpenChange(false);
+    } catch (err) {
+      toast({ title: extractApiError(err).message, variant: 'destructive' });
+    }
   });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{t('students.admit')}</DialogTitle>
+          <DialogTitle>{t(isEdit ? 'students.edit' : 'students.admit')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label={t('students.admissionNo')} error={errors.admissionNo?.message} required>
@@ -115,12 +191,51 @@ export function StudentForm({ open, onOpenChange }: Props) {
             <Input {...register('address')} />
           </Field>
 
+          <Field label={t('students.photo')} error={undefined} className="sm:col-span-2">
+            <div className="flex items-center gap-4">
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt=""
+                  className="h-16 w-16 rounded-md border object-cover"
+                />
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded-md border bg-muted text-center text-xs text-muted-foreground">
+                  {t('students.photo')}
+                </div>
+              )}
+              <Input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={onPhotoChange}
+                className="max-w-xs"
+              />
+            </div>
+          </Field>
+
+          <div className="flex items-center gap-2 sm:col-span-2">
+            <Controller
+              name="status"
+              control={control}
+              render={({ field }) => (
+                <input
+                  id="student-status"
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-input accent-primary"
+                  checked={field.value !== 'inactive'}
+                  onChange={(e) => field.onChange(e.target.checked ? 'active' : 'inactive')}
+                />
+              )}
+            />
+            <Label htmlFor="student-status">{t('common.active')}</Label>
+          </div>
+
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={admit.isPending}>
-              {admit.isPending && <Spinner className="me-2" />}
+            <Button type="submit" disabled={mutation.isPending || uploadPhoto.isPending}>
+              {(mutation.isPending || uploadPhoto.isPending) && <Spinner className="me-2" />}
               {t('common.save')}
             </Button>
           </DialogFooter>

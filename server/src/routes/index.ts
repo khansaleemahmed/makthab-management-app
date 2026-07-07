@@ -6,6 +6,7 @@ import { attendanceRouter } from "./attendance";
 import { expensesRouter, staffRouter, salariesRouter } from "./finance";
 import { reportsRouter } from "./reports";
 import { referenceRouter } from "./reference";
+import { classesRouter } from "./classes";
 import { dashboardRouter } from "./dashboard";
 import { adminRouter } from "./admin";
 
@@ -22,6 +23,7 @@ apiRouter.use("/salaries", salariesRouter);
 apiRouter.use("/reports", reportsRouter);
 apiRouter.use("/dashboard", dashboardRouter);
 apiRouter.use("/admin", adminRouter);
+apiRouter.use("/classes", classesRouter);
 
 // Reference/lookup endpoints (classes, academic-years, expense-categories)
 // live at the /api/v1 root.

@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { StudentsPage } from '@/features/students/StudentsPage';
+import { ClassesPage } from '@/features/classes/ClassesPage';
 import { FeesPage } from '@/features/fees/FeesPage';
 import { AttendancePage } from '@/features/attendance/AttendancePage';
 import { FinancePage } from '@/features/finance/FinancePage';
@@ -20,6 +21,10 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />
             <Route path="students" element={<StudentsPage />} />
+
+            <Route element={<RequireRole roles={['Admin']} />}>
+              <Route path="classes" element={<ClassesPage />} />
+            </Route>
 
             <Route element={<RequireRole roles={['Admin', 'Accountant']} />}>
               <Route path="fees" element={<FeesPage />} />

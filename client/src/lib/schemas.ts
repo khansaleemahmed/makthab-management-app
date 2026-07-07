@@ -15,6 +15,7 @@ import {
   feeTypeSchema,
   paymentMethodSchema,
   attendanceStatusSchema,
+  studentStatusSchema,
 } from '@makthab/shared';
 
 const requiredDate = z.string().min(1, 'Required');
@@ -30,8 +31,17 @@ export const studentCreateSchema = z.object({
   address: z.string().trim().optional(),
   classId: z.coerce.number().int().positive('Select a class'),
   academicYearId: z.coerce.number().int().positive('Select a year'),
+  status: studentStatusSchema.default('active'),
 });
 export type StudentCreateInput = z.infer<typeof studentCreateSchema>;
+
+export const classCreateSchema = z.object({
+  name: z.string().trim().min(1, 'Required'),
+  teacherId: z
+    .preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().int().positive())
+    .optional(),
+});
+export type ClassCreateInput = z.infer<typeof classCreateSchema>;
 
 export const feePaymentCreateSchema = z.object({
   studentId: z.coerce.number().int().positive('Select a student'),

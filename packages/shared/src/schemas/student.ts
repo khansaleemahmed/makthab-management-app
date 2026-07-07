@@ -15,6 +15,7 @@ export const studentCreateSchema = z.object({
   academicYearId: z.number().int().positive(),
   photoPath: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+  status: studentStatusSchema.optional(),
 });
 export type StudentCreateDto = z.infer<typeof studentCreateSchema>;
 

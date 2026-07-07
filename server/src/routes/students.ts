@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Router } from "express";
 import {
   studentCreateSchema,
@@ -11,6 +13,8 @@ import { validateBody, validateQuery } from "../middleware/validate";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { AppError } from "../middleware/errorHandler";
 import { renderPdf } from "../lib/pdf";
+import { FILES_DIR } from "../lib/paths";
+import { uploadStudentPhoto, photoContentType } from "../lib/upload";
 
 export const studentsRouter = Router();
 
@@ -69,6 +73,7 @@ studentsRouter.post(
         academicYearId: dto.academicYearId,
         photoPath: dto.photoPath ?? null,
         notes: dto.notes ?? null,
+        status: dto.status ?? "active",
       },
       include: { class: true, academicYear: true },
     });
@@ -180,5 +185,59 @@ studentsRouter.get(
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="admission-${student.admissionNo}.pdf"`);
     res.end(pdf);
+  })
+);
+
+// POST /students/:id/photo — upload/replace the student photo (Admin only).
+studentsRouter.post(
+  "/:id/photo",
+  requireRole("Admin"),
+  uploadStudentPhoto,
+  asyncHandler(async (req, res) => {
+    if (!req.file) {
+      throw new AppError(400, "no_file", "No photo uploaded (form field must be 'photo')");
+    }
+    const id = Number(req.params.id);
+    const existing = await prisma.student.findUnique({ where: { id } });
+    if (!existing) {
+      // Defensive: the upload middleware already 404s unknown ids before writing.
+      await fs.promises.rm(req.file.path, { force: true });
+      throw new AppError(404, "not_found", "Student not found");
+    }
+
+    // Remove the previous photo file so we don't leave orphans on disk.
+    if (existing.photoPath) {
+      await fs.promises.rm(path.join(FILES_DIR, existing.photoPath), { force: true });
+    }
+
+    const photoPath = `photos/${req.file.filename}`;
+    const student = await prisma.student.update({
+      where: { id },
+      data: { photoPath },
+      include: { class: true, academicYear: true },
+    });
+    res.json({ data: student });
+  })
+);
+
+// GET /students/:id/photo — stream the stored student photo.
+studentsRouter.get(
+  "/:id/photo",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const student = await prisma.student.findUnique({
+      where: { id },
+      select: { photoPath: true },
+    });
+    if (!student) throw new AppError(404, "not_found", "Student not found");
+    if (!student.photoPath) throw new AppError(404, "not_found", "Student has no photo");
+
+    const abs = path.join(FILES_DIR, student.photoPath);
+    if (!fs.existsSync(abs)) throw new AppError(404, "not_found", "Photo file missing");
+
+    res.setHeader("Content-Type", photoContentType(abs));
+    const stream = fs.createReadStream(abs);
+    stream.on("error", (err) => res.destroy(err));
+    stream.pipe(res);
   })
 );

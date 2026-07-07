@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Users,
+  GraduationCap,
   Receipt,
   CalendarCheck,
   Wallet,
@@ -20,6 +21,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { to: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard },
   { to: '/students', labelKey: 'nav.students', icon: Users },
+  { to: '/classes', labelKey: 'nav.classes', icon: GraduationCap, roles: ['Admin'] },
   { to: '/fees', labelKey: 'nav.fees', icon: Receipt, roles: ['Admin', 'Accountant'] },
   { to: '/attendance', labelKey: 'nav.attendance', icon: CalendarCheck, roles: ['Admin', 'Teacher'] },
   { to: '/finance', labelKey: 'nav.finance', icon: Wallet, roles: ['Admin', 'Accountant'] },
