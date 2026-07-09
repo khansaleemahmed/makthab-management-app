@@ -175,7 +175,9 @@ feesRouter.get(
         : q.status === "unpaid"
         ? rows.filter((r) => r.amountPaid < r.amountDue)
         : rows;
-    res.json({ data: { items, total: items.length, page: q.page, limit: q.limit } });
+    const agg = await prisma.feePayment.aggregate({ _sum: { amountPaid: true }, where });
+    const totalPaid = agg._sum.amountPaid ?? 0;
+    res.json({ data: { items, total: items.length, page: q.page, limit: q.limit, totalPaid } });
   })
 );
 

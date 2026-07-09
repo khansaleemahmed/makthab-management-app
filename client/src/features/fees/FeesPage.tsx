@@ -79,12 +79,22 @@ function PaymentsTab() {
   return (
     <Card>
       <CardContent className="space-y-4 pt-6">
-        <MonthYearPicker month={month} year={year} onMonth={setMonth} onYear={setYear} />
+        <div className="flex items-center justify-between gap-2">
+          <MonthYearPicker month={month} year={year} onMonth={setMonth} onYear={setYear} />
+          {data && (
+            <div className="text-sm text-muted-foreground">
+              {t('common.total')}:{' '}
+              <span className="font-semibold text-foreground">
+                {formatCurrency(data.totalPaid, i18n.language)}
+              </span>
+            </div>
+          )}
+        </div>
         {isLoading ? (
           <LoadingRows cols={6} />
         ) : isError ? (
           <ErrorState onRetry={refetch} />
-        ) : !data || data.length === 0 ? (
+        ) : !data || data.items.length === 0 ? (
           <EmptyState />
         ) : (
           <Table>
@@ -99,7 +109,7 @@ function PaymentsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((f) => (
+              {data.items.map((f) => (
                 <TableRow key={f.id}>
                   <TableCell className="font-medium">{f.receiptNo}</TableCell>
                   <TableCell>{f.student?.fullName ?? f.studentId}</TableCell>

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/form/CurrencyInput';
 import { Field } from '@/components/form/Field';
 import { SelectField } from '@/components/form/SelectField';
 import { Spinner } from '@/components/ui/spinner';
@@ -106,13 +107,13 @@ export function FeeForm({ open, onOpenChange, presetStudentId }: Props) {
             <Input type="number" {...register('feeYear')} />
           </Field>
           <Field label={t('fees.amountDue')} error={errors.amountDue?.message} required>
-            <Input type="number" step="0.01" {...register('amountDue')} />
+            <CurrencyInput step="0.01" {...register('amountDue')} />
           </Field>
           <Field label={t('fees.amountPaid')} error={errors.amountPaid?.message} required>
-            <Input type="number" step="0.01" {...register('amountPaid')} />
+            <CurrencyInput step="0.01" {...register('amountPaid')} />
           </Field>
           <Field label={t('fees.waiver')} error={errors.waiverAmount?.message}>
-            <Input type="number" step="0.01" {...register('waiverAmount')} />
+            <CurrencyInput step="0.01" {...register('waiverAmount')} />
           </Field>
           <Field label={t('fees.paymentDate')} error={errors.paymentDate?.message} required>
             <Input type="date" {...register('paymentDate')} />

@@ -3,7 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { CurrencyInput } from '@/components/form/CurrencyInput';
 import { Field } from '@/components/form/Field';
 import { SelectField } from '@/components/form/SelectField';
 import { Spinner } from '@/components/ui/spinner';
@@ -78,7 +78,7 @@ export function FeeStructures() {
             options={FEE_TYPES.map((v) => ({ value: v, label: v }))}
           />
           <Field label={t('fees.amountDue')} error={errors.amount?.message} required>
-            <Input type="number" step="0.01" {...register('amount')} />
+            <CurrencyInput step="0.01" {...register('amount')} />
           </Field>
           <div className="sm:col-span-4">
             <Button type="submit" disabled={save.isPending}>

@@ -20,7 +20,13 @@ function toArray<T>(data: unknown): T[] {
 export function useFees(params: FeeListParams = {}) {
   return useQuery({
     queryKey: ['fees', params],
-    queryFn: async () => toArray<FeePayment>(unwrap((await api.get('/fees', { params })).data)),
+    queryFn: async () => {
+      const payload = unwrap((await api.get('/fees', { params })).data) as {
+        items?: FeePayment[];
+        totalPaid?: number;
+      };
+      return { items: payload.items ?? [], totalPaid: payload.totalPaid ?? 0 };
+    },
   });
 }
 
