@@ -421,6 +421,8 @@ async function migrateExpenses(ws: ExcelJS.Worksheet, approvedById: number) {
     if (!item && !date) continue;
     if (!item) continue;
 
+    const costCell = cellText(ws.getRow(r).getCell(3).value);
+    const qtyCell = cellText(ws.getRow(r).getCell(4).value);
     const cost = toFloat(ws.getRow(r).getCell(3).value);
     const qty = toFloat(ws.getRow(r).getCell(4).value);
     const amount = toFloat(ws.getRow(r).getCell(5).value) || cost * qty;
@@ -428,6 +430,8 @@ async function migrateExpenses(ws: ExcelJS.Worksheet, approvedById: number) {
     const data = {
       voucherNo,
       categoryId: await categoryId(cellText(ws.getRow(r).getCell(6).value)),
+      cost: costCell ? cost : null,
+      quantity: qtyCell ? qty : null,
       amount,
       expenseDate: date ?? new Date(),
       payee: item,

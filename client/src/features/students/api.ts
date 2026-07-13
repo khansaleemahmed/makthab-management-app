@@ -11,6 +11,8 @@ export interface StudentListParams {
   academicYearId?: number;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 /** Normalise either a bare array or a paginated envelope into a list + total. */

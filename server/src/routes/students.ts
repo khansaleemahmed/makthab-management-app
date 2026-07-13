@@ -36,11 +36,16 @@ studentsRouter.get(
         { fatherName: { contains: q.q } },
       ];
     }
+    const orderBy = q.sortBy
+      ? q.sortBy === "class"
+        ? { class: { name: q.sortOrder } }
+        : { [q.sortBy]: q.sortOrder }
+      : { id: "desc" as const };
     const [items, total] = await Promise.all([
       prisma.student.findMany({
         where,
         include: { class: true, academicYear: true },
-        orderBy: { id: "desc" },
+        orderBy,
         skip: (q.page - 1) * q.limit,
         take: q.limit,
       }),

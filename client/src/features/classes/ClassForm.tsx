@@ -34,7 +34,7 @@ export function ClassForm({ open, onOpenChange, classItem }: Props) {
   const create = useCreateClass();
   const update = useUpdateClass(classItem?.id ?? 0);
   const mutation = isEdit ? update : create;
-  const { data: staff } = useStaff();
+  const { data: staff } = useStaff({ limit: 200 });
 
   const {
     register,
@@ -83,7 +83,7 @@ export function ClassForm({ open, onOpenChange, classItem }: Props) {
             label={t('classes.teacher')}
             error={errors.teacherId?.message}
             placeholder="—"
-            options={(staff ?? [])
+            options={(staff?.items ?? [])
               .filter((s) => s.role === 'Teacher')
               .map((s) => ({ value: s.id, label: s.fullName }))}
           />

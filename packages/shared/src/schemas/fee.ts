@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { feeTypeSchema, paymentMethodSchema } from "./common";
+import { feeTypeSchema, paymentMethodSchema, sortOrderSchema } from "./common";
 
 // FeePaymentCreateDto — POST /fees
 export const feePaymentCreateSchema = z.object({
@@ -16,6 +16,15 @@ export const feePaymentCreateSchema = z.object({
 export type FeePaymentCreateDto = z.infer<typeof feePaymentCreateSchema>;
 
 // GET /fees query params
+export const feeSortField = z.enum([
+  "receiptNo",
+  "feeType",
+  "amountPaid",
+  "paymentDate",
+  "student",
+]);
+export type FeeSortField = z.infer<typeof feeSortField>;
+
 export const feeListQuery = z.object({
   student_id: z.coerce.number().int().positive().optional(),
   month: z.coerce.number().int().min(1).max(12).optional(),
@@ -23,6 +32,8 @@ export const feeListQuery = z.object({
   status: z.enum(["paid", "unpaid"]).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(200).default(50),
+  sortBy: feeSortField.optional(),
+  sortOrder: sortOrderSchema.default("asc"),
 });
 export type FeeListQuery = z.infer<typeof feeListQuery>;
 

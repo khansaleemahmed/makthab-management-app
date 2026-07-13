@@ -106,6 +106,8 @@ export interface Expense {
   id: number;
   voucherNo: string;
   categoryId: number;
+  cost?: number | null;
+  quantity?: number | null;
   amount: number;
   expenseDate: string;
   payee: string;

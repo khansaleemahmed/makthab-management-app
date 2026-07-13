@@ -96,7 +96,17 @@ attendanceRouter.get(
       absent: v.absent,
       percentage: v.total ? Math.round((v.present / v.total) * 100) : 0,
     }));
-    res.json({ data: summary });
+
+    const sortBy = q.sortBy ?? "fullName";
+    const dir = q.sortOrder === "desc" ? -1 : 1;
+    summary.sort((a, b) => {
+      if (sortBy === "fullName") return a.fullName.localeCompare(b.fullName) * dir;
+      return (a[sortBy] - b[sortBy]) * dir;
+    });
+
+    const total = summary.length;
+    const items = summary.slice((q.page - 1) * q.limit, (q.page - 1) * q.limit + q.limit);
+    res.json({ data: { items, total, page: q.page, limit: q.limit } });
   })
 );
 

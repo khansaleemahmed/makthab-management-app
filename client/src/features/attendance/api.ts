@@ -31,13 +31,29 @@ export function useAttendance(params: AttendanceListParams) {
   });
 }
 
-export function useAttendanceSummary(month: number, year: number, class_id?: number) {
+export interface AttendanceSummaryParams {
+  month: number;
+  year: number;
+  class_id?: number;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+export function useAttendanceSummary(params: AttendanceSummaryParams) {
   return useQuery({
-    queryKey: ['attendance', 'summary', month, year, class_id],
-    queryFn: async () =>
-      toArray<AttendanceSummaryRow>(
-        unwrap((await api.get('/attendance/summary', { params: { month, year, class_id } })).data),
-      ),
+    queryKey: ['attendance', 'summary', params],
+    queryFn: async () => {
+      const payload = unwrap((await api.get('/attendance/summary', { params })).data) as {
+        items?: AttendanceSummaryRow[];
+        total?: number;
+      };
+      return {
+        items: payload.items ?? [],
+        total: payload.total ?? payload.items?.length ?? 0,
+      };
+    },
   });
 }
 

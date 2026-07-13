@@ -73,7 +73,8 @@ export type AttendanceRecordInput = z.infer<typeof attendanceRecordSchema>;
 
 export const expenseCreateSchema = z.object({
   categoryId: z.coerce.number().int().positive('Select a category'),
-  amount: z.coerce.number().positive(),
+  cost: z.coerce.number().positive('Enter a valid cost'),
+  quantity: z.coerce.number().positive('Enter a valid quantity'),
   expenseDate: requiredDate,
   payee: z.string().trim().min(1, 'Required'),
   description: z.string().optional(),

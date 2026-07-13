@@ -44,6 +44,12 @@
     "excel": "Excel",
     "total": "Total"
   },
+  "pagination": {
+    "rowsPerPage": "Rows per page",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next"
+  },
   "auth": {
     "login": "Sign in",
     "loginTitle": "Sign in to Makthab",
@@ -133,11 +139,18 @@
     "add": "Add Expense",
     "voucherNo": "Voucher No.",
     "category": "Category",
+    "cost": "Cost",
+    "quantity": "Quantity",
     "amount": "Amount",
     "date": "Date",
     "payee": "Payee",
     "description": "Description",
-    "created": "Expense recorded"
+    "created": "Expense recorded",
+    "edit": "Edit Expense",
+    "updated": "Expense updated",
+    "deleted": "Expense deleted",
+    "confirmDeleteTitle": "Delete Expense",
+    "confirmDelete": "Delete voucher {{voucher}}? This cannot be undone."
   },
   "staff": {
     "title": "Staff",

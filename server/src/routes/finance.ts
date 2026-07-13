@@ -2,10 +2,15 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import {
   expenseCreateSchema,
+  expenseUpdateSchema,
   expenseListQuery,
   staffCreateSchema,
+  staffListQuery,
   salaryRunSchema,
+  salaryListQuery,
   type ExpenseListQuery,
+  type StaffListQuery,
+  type SalaryListQuery,
 } from "@makthab/shared";
 import { prisma } from "../lib/prisma";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -29,7 +34,9 @@ expensesRouter.post(
       data: {
         voucherNo,
         categoryId: dto.categoryId,
-        amount: dto.amount,
+        cost: dto.cost,
+        quantity: dto.quantity,
+        amount: dto.cost * dto.quantity,
         expenseDate: dto.expenseDate,
         payee: dto.payee,
         description: dto.description ?? null,
@@ -39,6 +46,56 @@ expensesRouter.post(
       include: { category: true },
     });
     res.status(201).json({ data: expense });
+  })
+);
+
+// PATCH /expenses/:id — edit an entry (Admin only). amount is re-derived from
+// the effective cost * quantity; a client-sent amount is never trusted.
+expensesRouter.patch(
+  "/:id",
+  requireRole("Admin"),
+  validateBody(expenseUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, "not_found", "Expense not found");
+
+    const dto = req.body as typeof expenseUpdateSchema._output;
+    const cost = dto.cost ?? existing.cost;
+    const quantity = dto.quantity ?? existing.quantity;
+    const amount =
+      cost !== null && quantity !== null ? cost * quantity : existing.amount;
+
+    const expense = await prisma.expense.update({
+      where: { id },
+      data: {
+        ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
+        ...(dto.cost !== undefined ? { cost: dto.cost } : {}),
+        ...(dto.quantity !== undefined ? { quantity: dto.quantity } : {}),
+        amount,
+        ...(dto.expenseDate !== undefined ? { expenseDate: dto.expenseDate } : {}),
+        ...(dto.payee !== undefined ? { payee: dto.payee } : {}),
+        ...(dto.description !== undefined ? { description: dto.description ?? null } : {}),
+        ...(dto.receiptScanPath !== undefined
+          ? { receiptScanPath: dto.receiptScanPath ?? null }
+          : {}),
+      },
+      include: { category: true },
+    });
+    res.json({ data: expense });
+  })
+);
+
+// DELETE /expenses/:id — hard delete (Admin only). No model FKs onto Expense.
+expensesRouter.delete(
+  "/:id",
+  requireRole("Admin"),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await prisma.expense.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, "not_found", "Expense not found");
+    await prisma.expense.delete({ where: { id } });
+    res.json({ data: { id } });
   })
 );
 
@@ -81,17 +138,24 @@ expensesRouter.get(
         ...(q.date_to ? { lte: new Date(q.date_to) } : {}),
       };
     }
-    const [items, total] = await Promise.all([
+    const orderBy = q.sortBy
+      ? q.sortBy === "category"
+        ? { category: { name: q.sortOrder } }
+        : { [q.sortBy]: q.sortOrder }
+      : { id: "desc" as const };
+    const [items, total, agg] = await Promise.all([
       prisma.expense.findMany({
         where,
         include: { category: true },
-        orderBy: { id: "desc" },
+        orderBy,
         skip: (q.page - 1) * q.limit,
         take: q.limit,
       }),
       prisma.expense.count({ where }),
+      prisma.expense.aggregate({ _sum: { amount: true }, where }),
     ]);
-    res.json({ data: { items, total, page: q.page, limit: q.limit } });
+    const totalAmount = agg._sum.amount ?? 0;
+    res.json({ data: { items, total, page: q.page, limit: q.limit, totalAmount } });
   })
 );
 
@@ -101,9 +165,21 @@ staffRouter.use(requireAuth, requireRole("Admin", "Accountant"));
 
 staffRouter.get(
   "/",
+  validateQuery(staffListQuery),
   asyncHandler(async (_req, res) => {
-    const items = await prisma.staff.findMany({ orderBy: { id: "asc" } });
-    res.json({ data: items });
+    const q = res.locals.query as StaffListQuery;
+    const orderBy = q.sortBy
+      ? { [q.sortBy]: q.sortOrder }
+      : { fullName: "asc" as const };
+    const [items, total] = await Promise.all([
+      prisma.staff.findMany({
+        orderBy,
+        skip: (q.page - 1) * q.limit,
+        take: q.limit,
+      }),
+      prisma.staff.count(),
+    ]);
+    res.json({ data: { items, total, page: q.page, limit: q.limit } });
   })
 );
 
@@ -139,17 +215,29 @@ salariesRouter.use(requireAuth, requireRole("Admin", "Accountant"));
 
 salariesRouter.get(
   "/",
-  asyncHandler(async (req, res) => {
+  validateQuery(salaryListQuery),
+  asyncHandler(async (_req, res) => {
+    const q = res.locals.query as SalaryListQuery;
     const where: Record<string, unknown> = {};
-    if (req.query.month) where.salaryMonth = Number(req.query.month);
-    if (req.query.year) where.salaryYear = Number(req.query.year);
-    if (req.query.staff_id) where.staffId = Number(req.query.staff_id);
-    const items = await prisma.salaryPayment.findMany({
-      where,
-      include: { staff: true },
-      orderBy: { id: "desc" },
-    });
-    res.json({ data: items });
+    if (q.month) where.salaryMonth = q.month;
+    if (q.year) where.salaryYear = q.year;
+    if (q.staff_id) where.staffId = q.staff_id;
+    const orderBy = q.sortBy
+      ? q.sortBy === "staff"
+        ? { staff: { fullName: q.sortOrder } }
+        : { [q.sortBy]: q.sortOrder }
+      : { id: "desc" as const };
+    const [items, total] = await Promise.all([
+      prisma.salaryPayment.findMany({
+        where,
+        include: { staff: true },
+        orderBy,
+        skip: (q.page - 1) * q.limit,
+        take: q.limit,
+      }),
+      prisma.salaryPayment.count({ where }),
+    ]);
+    res.json({ data: { items, total, page: q.page, limit: q.limit } });
   })
 );
 

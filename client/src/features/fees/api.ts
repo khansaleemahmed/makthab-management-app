@@ -9,6 +9,10 @@ export interface FeeListParams {
   month?: number;
   year?: number;
   status?: 'paid' | 'unpaid';
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 function toArray<T>(data: unknown): T[] {
@@ -23,9 +27,14 @@ export function useFees(params: FeeListParams = {}) {
     queryFn: async () => {
       const payload = unwrap((await api.get('/fees', { params })).data) as {
         items?: FeePayment[];
+        total?: number;
         totalPaid?: number;
       };
-      return { items: payload.items ?? [], totalPaid: payload.totalPaid ?? 0 };
+      return {
+        items: payload.items ?? [],
+        total: payload.total ?? payload.items?.length ?? 0,
+        totalPaid: payload.totalPaid ?? 0,
+      };
     },
   });
 }

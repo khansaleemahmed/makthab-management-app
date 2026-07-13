@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { genderSchema, phoneSchema, studentStatusSchema } from "./common";
+import {
+  genderSchema,
+  phoneSchema,
+  sortOrderSchema,
+  studentStatusSchema,
+} from "./common";
 
 // StudentCreateDto — POST /students
 export const studentCreateSchema = z.object({
@@ -26,12 +31,23 @@ export const studentUpdateSchema = studentCreateSchema.partial().extend({
 export type StudentUpdateDto = z.infer<typeof studentUpdateSchema>;
 
 // GET /students query params
+export const studentSortField = z.enum([
+  "admissionNo",
+  "fullName",
+  "fatherName",
+  "status",
+  "class",
+]);
+export type StudentSortField = z.infer<typeof studentSortField>;
+
 export const studentListQuery = z.object({
   class_id: z.coerce.number().int().positive().optional(),
   status: studentStatusSchema.optional(),
   q: z.string().trim().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(200).default(50),
+  sortBy: studentSortField.optional(),
+  sortOrder: sortOrderSchema.default("asc"),
 });
 export type StudentListQuery = z.infer<typeof studentListQuery>;
 

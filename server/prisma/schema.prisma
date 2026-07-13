@@ -84,6 +84,8 @@ model Expense {
   id              Int      @id @default(autoincrement())
   voucherNo       String   @unique
   categoryId      Int
+  cost            Float?
+  quantity        Float?
   amount          Float
   expenseDate     DateTime
   payee           String

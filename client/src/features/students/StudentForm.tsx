@@ -141,6 +141,44 @@ export function StudentForm({ open, onOpenChange, student }: Props) {
           <DialogTitle>{t(isEdit ? 'students.edit' : 'students.admit')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
+          <div className="flex items-start justify-between gap-4 sm:col-span-2">
+            <div className="flex items-center gap-4">
+              {previewUrl ? (
+                <img
+                  src={previewUrl}
+                  alt=""
+                  className="h-16 w-16 rounded-md border object-cover"
+                />
+              ) : (
+                <div className="flex h-16 w-16 items-center justify-center rounded-md border bg-muted text-center text-xs text-muted-foreground">
+                  {t('students.photo')}
+                </div>
+              )}
+              <Input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={onPhotoChange}
+                className="max-w-xs"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Controller
+                name="status"
+                control={control}
+                render={({ field }) => (
+                  <input
+                    id="student-status"
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-input accent-primary"
+                    checked={field.value !== 'inactive'}
+                    onChange={(e) => field.onChange(e.target.checked ? 'active' : 'inactive')}
+                  />
+                )}
+              />
+              <Label htmlFor="student-status">{t('common.active')}</Label>
+            </div>
+          </div>
+
           <Field label={t('students.admissionNo')} error={errors.admissionNo?.message} required>
             <Input {...register('admissionNo')} />
           </Field>
@@ -190,45 +228,6 @@ export function StudentForm({ open, onOpenChange, student }: Props) {
           <Field label={t('students.address')} error={errors.address?.message} className="sm:col-span-2">
             <Input {...register('address')} />
           </Field>
-
-          <Field label={t('students.photo')} error={undefined} className="sm:col-span-2">
-            <div className="flex items-center gap-4">
-              {previewUrl ? (
-                <img
-                  src={previewUrl}
-                  alt=""
-                  className="h-16 w-16 rounded-md border object-cover"
-                />
-              ) : (
-                <div className="flex h-16 w-16 items-center justify-center rounded-md border bg-muted text-center text-xs text-muted-foreground">
-                  {t('students.photo')}
-                </div>
-              )}
-              <Input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={onPhotoChange}
-                className="max-w-xs"
-              />
-            </div>
-          </Field>
-
-          <div className="flex items-center gap-2 sm:col-span-2">
-            <Controller
-              name="status"
-              control={control}
-              render={({ field }) => (
-                <input
-                  id="student-status"
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-input accent-primary"
-                  checked={field.value !== 'inactive'}
-                  onChange={(e) => field.onChange(e.target.checked ? 'active' : 'inactive')}
-                />
-              )}
-            />
-            <Label htmlFor="student-status">{t('common.active')}</Label>
-          </div>
 
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

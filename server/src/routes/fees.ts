@@ -162,22 +162,32 @@ feesRouter.get(
     if (q.student_id) where.studentId = q.student_id;
     if (q.month) where.feeMonth = q.month;
     if (q.year) where.feeYear = q.year;
+    const orderBy = q.sortBy
+      ? q.sortBy === "student"
+        ? { student: { fullName: q.sortOrder } }
+        : { [q.sortBy]: q.sortOrder }
+      : { id: "desc" as const };
+    const skip = (q.page - 1) * q.limit;
+    // paid/unpaid compares two columns (amountPaid vs amountDue), which Prisma
+    // can't express in `where`, so when it's active we fetch the full filtered
+    // set and paginate in-memory; otherwise the DB does skip/take + count.
     const rows = await prisma.feePayment.findMany({
       where,
       include: { student: true },
-      orderBy: { id: "desc" },
-      skip: (q.page - 1) * q.limit,
-      take: q.limit,
+      orderBy,
+      ...(q.status ? {} : { skip, take: q.limit }),
     });
-    const items =
+    const filtered =
       q.status === "paid"
         ? rows.filter((r) => r.amountPaid >= r.amountDue)
         : q.status === "unpaid"
         ? rows.filter((r) => r.amountPaid < r.amountDue)
         : rows;
+    const items = q.status ? filtered.slice(skip, skip + q.limit) : filtered;
+    const total = q.status ? filtered.length : await prisma.feePayment.count({ where });
     const agg = await prisma.feePayment.aggregate({ _sum: { amountPaid: true }, where });
     const totalPaid = agg._sum.amountPaid ?? 0;
-    res.json({ data: { items, total: items.length, page: q.page, limit: q.limit, totalPaid } });
+    res.json({ data: { items, total, page: q.page, limit: q.limit, totalPaid } });
   })
 );
 

@@ -16,11 +16,12 @@ import {
 } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LoadingRows, ErrorState, EmptyState } from '@/components/QueryState';
+import { Pagination, DEFAULT_PAGE_SIZE } from '@/components/Pagination';
+import { SortableTableHead, useSort } from '@/components/SortableTableHead';
 import { useToast } from '@/components/ui/use-toast';
 import { useClasses } from '@/api/reference';
 import { useUiStore } from '@/store/uiStore';
 import { useDebounce } from '@/lib/useDebounce';
-import { formatDate } from '@/lib/format';
 import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { useStudents, useDeleteStudent, downloadAdmissionLetter } from './api';
@@ -29,7 +30,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type { Student } from '@/types/domain';
 
 export function StudentsPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
@@ -37,6 +38,9 @@ export function StudentsPage() {
   const [search, setSearch] = useState('');
   const [classId, setClassId] = useState<string>('all');
   const [status, setStatus] = useState<string>('active');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const { sort, toggle } = useSort({ sortBy: '', sortOrder: 'asc' });
   const q = useDebounce(search);
   const role = useAuthStore((s) => s.user?.role);
   const academicYearId = useUiStore((s) => s.academicYearId);
@@ -49,9 +53,18 @@ export function StudentsPage() {
     class_id: classId !== 'all' ? Number(classId) : undefined,
     status: status !== 'all' ? status : undefined,
     academicYearId: academicYearId ?? undefined,
+    page,
+    limit,
+    sortBy: sort.sortBy || undefined,
+    sortOrder: sort.sortBy ? sort.sortOrder : undefined,
   });
 
   const canManage = role === 'Admin';
+
+  const onSort = (key: string) => {
+    toggle(key);
+    setPage(1);
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -104,11 +117,20 @@ export function StudentsPage() {
               <Input
                 placeholder={t('common.search')}
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 className="ps-9"
               />
             </div>
-            <Select value={classId} onValueChange={setClassId}>
+            <Select
+              value={classId}
+              onValueChange={(v) => {
+                setClassId(v);
+                setPage(1);
+              }}
+            >
               <SelectTrigger className="w-full sm:w-40">
                 <SelectValue />
               </SelectTrigger>
@@ -121,7 +143,13 @@ export function StudentsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={status} onValueChange={setStatus}>
+            <Select
+              value={status}
+              onValueChange={(v) => {
+                setStatus(v);
+                setPage(1);
+              }}
+            >
               <SelectTrigger className="w-full sm:w-40">
                 <SelectValue />
               </SelectTrigger>
@@ -143,11 +171,21 @@ export function StudentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t('students.admissionNo')}</TableHead>
-                  <TableHead>{t('students.fullName')}</TableHead>
-                  <TableHead>{t('students.fatherName')}</TableHead>
-                  <TableHead>{t('students.class')}</TableHead>
-                  <TableHead>{t('common.status')}</TableHead>
+                  <SortableTableHead sortKey="admissionNo" sort={sort} onSort={onSort}>
+                    {t('students.admissionNo')}
+                  </SortableTableHead>
+                  <SortableTableHead sortKey="fullName" sort={sort} onSort={onSort}>
+                    {t('students.fullName')}
+                  </SortableTableHead>
+                  <SortableTableHead sortKey="fatherName" sort={sort} onSort={onSort}>
+                    {t('students.fatherName')}
+                  </SortableTableHead>
+                  <SortableTableHead sortKey="class" sort={sort} onSort={onSort}>
+                    {t('students.class')}
+                  </SortableTableHead>
+                  <SortableTableHead sortKey="status" sort={sort} onSort={onSort}>
+                    {t('common.status')}
+                  </SortableTableHead>
                   <TableHead className="text-end">{t('common.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -195,10 +233,17 @@ export function StudentsPage() {
               </TableBody>
             </Table>
           )}
-          {data && data.items.length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              {data.total} · {formatDate(new Date(), i18n.language)}
-            </p>
+          {data && data.total > 0 && (
+            <Pagination
+              page={page}
+              limit={limit}
+              total={data.total}
+              onPageChange={setPage}
+              onLimitChange={(l) => {
+                setLimit(l);
+                setPage(1);
+              }}
+            />
           )}
         </CardContent>
       </Card>

@@ -13,6 +13,12 @@ export async function nextReceiptNo(): Promise<string> {
 }
 
 export async function nextVoucherNo(): Promise<string> {
-  const n = await prisma.expense.count();
-  return `EXP-${stamp()}-${String(n + 1).padStart(4, "0")}`;
+  // Derive from the max existing suffix, not count(): expenses can be hard-
+  // deleted, so count()+1 could collide with a surviving voucherNo (@unique).
+  const rows = await prisma.expense.findMany({ select: { voucherNo: true } });
+  const maxSeq = rows.reduce((m, r) => {
+    const seq = Number(r.voucherNo.split("-").pop());
+    return Number.isFinite(seq) && seq > m ? seq : m;
+  }, 0);
+  return `EXP-${stamp()}-${String(maxSeq + 1).padStart(4, "0")}`;
 }

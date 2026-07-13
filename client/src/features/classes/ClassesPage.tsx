@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
@@ -13,6 +13,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { LoadingRows, ErrorState, EmptyState } from '@/components/QueryState';
+import { Pagination, DEFAULT_PAGE_SIZE } from '@/components/Pagination';
+import { SortableTableHead, useSort } from '@/components/SortableTableHead';
 import { useToast } from '@/components/ui/use-toast';
 import { useClasses, useDeleteClass } from '@/api/reference';
 import { useStaff } from '@/features/finance/api';
@@ -29,15 +31,37 @@ export function ClassesPage() {
   const role = useAuthStore((s) => s.user?.role);
 
   const { data, isLoading, isError, refetch } = useClasses();
-  const { data: staff } = useStaff();
+  const { data: staff } = useStaff({ limit: 200 });
   const del = useDeleteClass();
 
   const canManage = role === 'Admin';
 
+  const { sort, toggle } = useSort({ sortBy: 'name', sortOrder: 'asc' });
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+
   const teacherName = useMemo(() => {
-    const map = new Map((staff ?? []).map((s) => [s.id, s.fullName]));
+    const map = new Map((staff?.items ?? []).map((s) => [s.id, s.fullName]));
     return (id?: number | null) => (id != null ? map.get(id) ?? String(id) : '—');
   }, [staff]);
+
+  const sorted = useMemo(() => {
+    const rows = [...(data ?? [])];
+    const dir = sort.sortOrder === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      const av = sort.sortBy === 'teacher' ? teacherName(a.teacherId) : a.name;
+      const bv = sort.sortBy === 'teacher' ? teacherName(b.teacherId) : b.name;
+      return av.localeCompare(bv) * dir;
+    });
+    return rows;
+  }, [data, sort, teacherName]);
+
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+  const pageRows = sorted.slice((page - 1) * limit, page * limit);
 
   const openCreate = () => {
     setEditing(null);
@@ -71,7 +95,7 @@ export function ClassesPage() {
       />
 
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="space-y-4 pt-6">
           {isLoading ? (
             <LoadingRows cols={3} />
           ) : isError ? (
@@ -82,13 +106,17 @@ export function ClassesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t('classes.name')}</TableHead>
-                  <TableHead>{t('classes.teacher')}</TableHead>
+                  <SortableTableHead sortKey="name" sort={sort} onSort={toggle}>
+                    {t('classes.name')}
+                  </SortableTableHead>
+                  <SortableTableHead sortKey="teacher" sort={sort} onSort={toggle}>
+                    {t('classes.teacher')}
+                  </SortableTableHead>
                   <TableHead className="text-end">{t('common.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.map((c) => (
+                {pageRows.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">{c.name}</TableCell>
                     <TableCell>{teacherName(c.teacherId)}</TableCell>
@@ -121,6 +149,18 @@ export function ClassesPage() {
                 ))}
               </TableBody>
             </Table>
+          )}
+          {data && data.length > 0 && (
+            <Pagination
+              page={page}
+              limit={limit}
+              total={total}
+              onPageChange={setPage}
+              onLimitChange={(l) => {
+                setLimit(l);
+                setPage(1);
+              }}
+            />
           )}
         </CardContent>
       </Card>

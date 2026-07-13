@@ -44,6 +44,12 @@
     "excel": "Excel",
     "total": "المجموع"
   },
+  "pagination": {
+    "rowsPerPage": "صفوف لكل صفحة",
+    "range": "{{from}}–{{to}} من {{total}}",
+    "previous": "السابق",
+    "next": "التالي"
+  },
   "auth": {
     "login": "تسجيل الدخول",
     "loginTitle": "تسجيل الدخول إلى مرثب آب",
@@ -133,11 +139,18 @@
     "add": "إضافة مصروف",
     "voucherNo": "رقم السند",
     "category": "الفئة",
+    "cost": "التكلفة",
+    "quantity": "الكمية",
     "amount": "المبلغ",
     "date": "التاريخ",
     "payee": "المستفيد",
     "description": "الوصف",
-    "created": "تم تسجيل المصروف"
+    "created": "تم تسجيل المصروف",
+    "edit": "تعديل المصروف",
+    "updated": "تم تحديث المصروف",
+    "deleted": "تم حذف المصروف",
+    "confirmDeleteTitle": "حذف المصروف",
+    "confirmDelete": "حذف السند {{voucher}}؟ لا يمكن التراجع عن هذا."
   },
   "staff": {
     "title": "الموظفون",

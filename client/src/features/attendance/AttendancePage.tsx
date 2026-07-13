@@ -10,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { LoadingRows, ErrorState, EmptyState } from '@/components/QueryState';
+import { Pagination, DEFAULT_PAGE_SIZE } from '@/components/Pagination';
+import { SortableTableHead, useSort } from '@/components/SortableTableHead';
 import { Spinner } from '@/components/ui/spinner';
 import { useToast } from '@/components/ui/use-toast';
 import { toDateInput, monthName } from '@/lib/format';
@@ -123,14 +125,35 @@ function SummaryTab() {
   const { t } = useTranslation();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const { data, isLoading, isError, refetch } = useAttendanceSummary(month, year);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const { sort, toggle } = useSort({ sortBy: '', sortOrder: 'asc' });
+  const { data, isLoading, isError, refetch } = useAttendanceSummary({
+    month,
+    year,
+    page,
+    limit,
+    sortBy: sort.sortBy || undefined,
+    sortOrder: sort.sortBy ? sort.sortOrder : undefined,
+  });
   const years = [now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2];
+
+  const onSort = (key: string) => {
+    toggle(key);
+    setPage(1);
+  };
 
   return (
     <Card>
       <CardContent className="space-y-4 pt-6">
         <div className="flex gap-2">
-          <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+          <Select
+            value={String(month)}
+            onValueChange={(v) => {
+              setMonth(Number(v));
+              setPage(1);
+            }}
+          >
             <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
             <SelectContent>
               {Array.from({ length: 12 }, (_, i) => (
@@ -138,7 +161,13 @@ function SummaryTab() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+          <Select
+            value={String(year)}
+            onValueChange={(v) => {
+              setYear(Number(v));
+              setPage(1);
+            }}
+          >
             <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
             <SelectContent>
               {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
@@ -149,21 +178,31 @@ function SummaryTab() {
           <LoadingRows cols={5} />
         ) : isError ? (
           <ErrorState onRetry={refetch} />
-        ) : !data || data.length === 0 ? (
+        ) : !data || data.items.length === 0 ? (
           <EmptyState />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t('students.fullName')}</TableHead>
-                <TableHead className="text-end">{t('attendance.present')}</TableHead>
-                <TableHead className="text-end">{t('attendance.absent')}</TableHead>
-                <TableHead className="text-end">{t('common.total')}</TableHead>
-                <TableHead className="text-end">{t('attendance.percentage')}</TableHead>
+                <SortableTableHead sortKey="fullName" sort={sort} onSort={onSort}>
+                  {t('students.fullName')}
+                </SortableTableHead>
+                <SortableTableHead sortKey="present" sort={sort} onSort={onSort} className="text-end">
+                  {t('attendance.present')}
+                </SortableTableHead>
+                <SortableTableHead sortKey="absent" sort={sort} onSort={onSort} className="text-end">
+                  {t('attendance.absent')}
+                </SortableTableHead>
+                <SortableTableHead sortKey="totalDays" sort={sort} onSort={onSort} className="text-end">
+                  {t('common.total')}
+                </SortableTableHead>
+                <SortableTableHead sortKey="percentage" sort={sort} onSort={onSort} className="text-end">
+                  {t('attendance.percentage')}
+                </SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((r) => (
+              {data.items.map((r) => (
                 <TableRow key={r.studentId}>
                   <TableCell className="font-medium">{r.fullName}</TableCell>
                   <TableCell className="text-end">{r.present}</TableCell>
@@ -176,6 +215,18 @@ function SummaryTab() {
               ))}
             </TableBody>
           </Table>
+        )}
+        {data && data.total > 0 && (
+          <Pagination
+            page={page}
+            limit={limit}
+            total={data.total}
+            onPageChange={setPage}
+            onLimitChange={(l) => {
+              setLimit(l);
+              setPage(1);
+            }}
+          />
         )}
       </CardContent>
     </Card>

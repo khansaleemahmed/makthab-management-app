@@ -44,6 +44,28 @@ describeApi("students", () => {
     expect(Array.isArray(d) || Array.isArray(d?.items)).toBe(true);
   });
 
+  it("GET /students -> paginated envelope + sortBy=fullName asc orders items", async () => {
+    const r = await request(app())
+      .get(`${API}/students?limit=200&page=1&sortBy=fullName&sortOrder=asc`)
+      .set(bearer(adminToken));
+    expect(r.status).toBe(200);
+    const d = r.body.data;
+    expect(d).toHaveProperty("items");
+    expect(d).toHaveProperty("total");
+    expect(d.page).toBe(1);
+    expect(d.limit).toBe(200);
+    const names = d.items.map((s: { fullName: string }) => s.fullName);
+    const sorted = [...names].sort((a, b) => a.localeCompare(b));
+    expect(names).toEqual(sorted);
+  });
+
+  it("GET /students?limit=1 -> respects page size", async () => {
+    const r = await request(app()).get(`${API}/students?limit=1&page=1`).set(bearer(adminToken));
+    expect(r.status).toBe(200);
+    expect(r.body.data.items.length).toBeLessThanOrEqual(1);
+    expect(r.body.data.limit).toBe(1);
+  });
+
   it("GET /students/:id -> profile + fee summary + attendance stats", async () => {
     const r = await request(app()).get(`${API}/students/${createdId}`).set(bearer(adminToken));
     expect(r.status).toBe(200);

@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { LoadingRows, ErrorState, EmptyState } from '@/components/QueryState';
+import { Pagination, DEFAULT_PAGE_SIZE } from '@/components/Pagination';
+import { SortableTableHead, useSort } from '@/components/SortableTableHead';
 import { useToast } from '@/components/ui/use-toast';
 import { formatCurrency, monthName } from '@/lib/format';
 import { extractApiError } from '@/api/client';
@@ -57,7 +59,22 @@ function PaymentsTab() {
   const { toast } = useToast();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const { data, isLoading, isError, refetch } = useFees({ month, year });
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const { sort, toggle } = useSort({ sortBy: '', sortOrder: 'asc' });
+  const { data, isLoading, isError, refetch } = useFees({
+    month,
+    year,
+    page,
+    limit,
+    sortBy: sort.sortBy || undefined,
+    sortOrder: sort.sortBy ? sort.sortOrder : undefined,
+  });
+
+  const onSort = (key: string) => {
+    toggle(key);
+    setPage(1);
+  };
 
   const receipt = async (f: FeePayment) => {
     try {
@@ -80,7 +97,18 @@ function PaymentsTab() {
     <Card>
       <CardContent className="space-y-4 pt-6">
         <div className="flex items-center justify-between gap-2">
-          <MonthYearPicker month={month} year={year} onMonth={setMonth} onYear={setYear} />
+          <MonthYearPicker
+            month={month}
+            year={year}
+            onMonth={(m) => {
+              setMonth(m);
+              setPage(1);
+            }}
+            onYear={(y) => {
+              setYear(y);
+              setPage(1);
+            }}
+          />
           {data && (
             <div className="text-sm text-muted-foreground">
               {t('common.total')}:{' '}
@@ -100,10 +128,18 @@ function PaymentsTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t('fees.receiptNo')}</TableHead>
-                <TableHead>{t('fees.student')}</TableHead>
-                <TableHead>{t('fees.feeType')}</TableHead>
-                <TableHead className="text-end">{t('fees.amountPaid')}</TableHead>
+                <SortableTableHead sortKey="receiptNo" sort={sort} onSort={onSort}>
+                  {t('fees.receiptNo')}
+                </SortableTableHead>
+                <SortableTableHead sortKey="student" sort={sort} onSort={onSort}>
+                  {t('fees.student')}
+                </SortableTableHead>
+                <SortableTableHead sortKey="feeType" sort={sort} onSort={onSort}>
+                  {t('fees.feeType')}
+                </SortableTableHead>
+                <SortableTableHead sortKey="amountPaid" sort={sort} onSort={onSort} className="text-end">
+                  {t('fees.amountPaid')}
+                </SortableTableHead>
                 <TableHead>{t('common.status')}</TableHead>
                 <TableHead className="text-end">{t('common.actions')}</TableHead>
               </TableRow>
@@ -134,6 +170,18 @@ function PaymentsTab() {
               ))}
             </TableBody>
           </Table>
+        )}
+        {data && data.total > 0 && (
+          <Pagination
+            page={page}
+            limit={limit}
+            total={data.total}
+            onPageChange={setPage}
+            onLimitChange={(l) => {
+              setLimit(l);
+              setPage(1);
+            }}
+          />
         )}
       </CardContent>
     </Card>

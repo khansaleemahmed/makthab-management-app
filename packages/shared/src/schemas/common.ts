@@ -35,6 +35,10 @@ export const attendanceStatusSchema = z.enum([
 
 export const feeTypeSchema = z.enum(["admission", "monthly", "annual", "other"]);
 
+// Sort direction shared by sortable list endpoints.
+export const sortOrderSchema = z.enum(["asc", "desc"]);
+export type SortOrder = z.infer<typeof sortOrderSchema>;
+
 // Pagination query shared by list endpoints.
 export const paginationQuery = z.object({
   page: z.coerce.number().int().positive().default(1),

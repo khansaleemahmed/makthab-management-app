@@ -15,9 +15,10 @@ describeApi("finance (expenses/staff/salaries)", () => {
     const r = await request(app())
       .post(`${API}/expenses`)
       .set(bearer(token))
-      .send({ categoryId: 1, amount: 1200, expenseDate: "2026-06-15", payee: "Stationery Co" });
+      .send({ categoryId: 1, cost: 600, quantity: 2, expenseDate: "2026-06-15", payee: "Stationery Co" });
     expect([200, 201]).toContain(r.status);
     expect(r.body.data).toHaveProperty("voucherNo");
+    expect(r.body.data.amount).toBe(1200);
   });
 
   it("POST /expenses bad body -> 400 Zod", async () => {

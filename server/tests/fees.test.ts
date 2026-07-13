@@ -53,6 +53,30 @@ describeApi("fees", () => {
     expect(r.status).toBe(200);
   });
 
+  it("GET /fees -> total is the full row count, not the page-slice length", async () => {
+    // Seed enough rows that a small page can't contain them all.
+    for (let m = 1; m <= 3; m++) {
+      await request(app()).post(`${API}/fees`).set(bearer(token)).send({
+        studentId,
+        feeType: "monthly",
+        feeMonth: m,
+        feeYear: 2025,
+        amountDue: 100,
+        amountPaid: 100,
+        paymentDate: "2025-0" + m + "-05",
+        paymentMethod: "cash",
+      });
+    }
+    const r = await request(app())
+      .get(`${API}/fees?student_id=${studentId}&limit=1&page=1`)
+      .set(bearer(token));
+    expect(r.status).toBe(200);
+    expect(r.body.data.items.length).toBe(1);
+    expect(r.body.data.limit).toBe(1);
+    // total must count all matching rows, so it exceeds the single returned item.
+    expect(r.body.data.total).toBeGreaterThan(1);
+  });
+
   it("GET /fees/:id -> payment record with receipt URL", async () => {
     const r = await request(app()).get(`${API}/fees/${feeId}`).set(bearer(token));
     expect(r.status).toBe(200);
