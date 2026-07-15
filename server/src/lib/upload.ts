@@ -63,6 +63,52 @@ export function uploadStudentPhoto(req: Request, res: Response, next: NextFuncti
   });
 }
 
+// Staff photos mirror student photos, but Staff has no admissionNo, so the
+// filename is keyed off the staff id (staff-${id}-${ts}).
+const staffStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, ensureDir(PHOTOS_DIR));
+  },
+  filename: (req, file, cb) => {
+    void (async () => {
+      const id = Number(req.params.id);
+      const staff = await prisma.staff.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!staff) {
+        return cb(new AppError(404, "not_found", "Staff not found"), "");
+      }
+      const ext = ALLOWED_TYPES.get(file.mimetype) ?? path.extname(file.originalname);
+      cb(null, `staff-${staff.id}-${Date.now()}${ext}`);
+    })().catch((err) => cb(err as Error, ""));
+  },
+});
+
+const staffUpload = multer({
+  storage: staffStorage,
+  limits: { fileSize: MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_TYPES.has(file.mimetype)) {
+      return cb(new AppError(400, "invalid_file", "Only JPEG, PNG, or WebP images are allowed"));
+    }
+    cb(null, true);
+  },
+});
+
+export function uploadStaffPhoto(req: Request, res: Response, next: NextFunction) {
+  staffUpload.single("photo")(req, res, (err: unknown) => {
+    if (err instanceof MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return next(new AppError(400, "file_too_large", "Photo must be 3MB or smaller"));
+      }
+      return next(new AppError(400, "upload_error", err.message));
+    }
+    if (err) return next(err);
+    next();
+  });
+}
+
 // Content-Type for streaming a stored photo back, inferred from its extension.
 export function photoContentType(filePath: string): string {
   switch (path.extname(filePath).toLowerCase()) {

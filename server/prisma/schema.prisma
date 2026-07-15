@@ -109,6 +109,7 @@ model Staff {
   baseSalary   Float
   contactNo    String
   whatsappNo   String
+  photoPath    String?
   status       String   @default("active")
   createdAt    DateTime @default(now())
 

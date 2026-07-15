@@ -123,6 +123,7 @@ export interface Staff {
   baseSalary: number;
   contactNo: string;
   whatsappNo: string;
+  photoPath?: string | null;
   status: string;
 }
 

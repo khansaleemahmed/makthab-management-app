@@ -177,20 +177,33 @@
     "baseSalary": "Base Salary",
     "contactNo": "Contact No.",
     "whatsappNo": "WhatsApp No.",
-    "created": "Staff member added"
+    "photo": "Photo",
+    "created": "Staff member added",
+    "edit": "Edit Staff",
+    "updated": "Staff member updated",
+    "deleted": "Staff member marked inactive",
+    "confirmDeleteTitle": "Deactivate Staff",
+    "confirmDelete": "Mark {{name}} as inactive? They will no longer appear as active staff."
   },
   "salaries": {
     "title": "Salaries",
-    "run": "Run Payroll",
+    "add": "Add Salary Payment",
     "staff": "Staff",
     "month": "Month",
     "paymentDate": "Payment Date",
     "year": "Year",
     "gross": "Gross",
+    "grossAmount": "Gross Amount",
     "deductions": "Deductions",
     "net": "Net",
     "payslip": "Payslip",
-    "processed": "Salary processed"
+    "total": "Total Salary Payment",
+    "created": "Salary payment recorded",
+    "edit": "Edit Salary Payment",
+    "updated": "Salary payment updated",
+    "deleted": "Salary payment deleted",
+    "confirmDeleteTitle": "Delete Salary Payment",
+    "confirmDelete": "Delete the {{month}} {{year}} salary payment for {{staff}}? This cannot be undone."
   },
   "reports": {
     "title": "Reports",

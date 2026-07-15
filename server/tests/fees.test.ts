@@ -308,6 +308,38 @@ describeApi("fees", () => {
     expect(row?.amountDue).toBe(1234);
   });
 
+  it("GET /fees/defaulters -> amountDue falls back to a class's structure from an older academic year", async () => {
+    const admin = await login(CREDS.admin.username, CREDS.admin.password);
+    // FeeStructure for class 3 (Hifz) is configured under the OLDER year (id 1);
+    // the student below is enrolled in the NEWER year (id 2). An exact
+    // classId+academicYearId lookup misses, so the amount must fall back to the
+    // older-year structure rather than silently reporting 0.
+    await request(app())
+      .post(`${API}/fees/structures`)
+      .set(bearer(admin))
+      .send({ classId: 3, academicYearId: 1, feeType: "monthly", amount: 750 });
+    const student = await request(app())
+      .post(`${API}/students`)
+      .set(bearer(admin))
+      .send({
+        admissionNo: `QA-DEF-${Date.now()}`,
+        fullName: "Fallback Student",
+        fatherName: "Father",
+        gender: "male",
+        contactNo: "9990004444",
+        whatsappNo: "9990004444",
+        classId: 3,
+        academicYearId: 2,
+      });
+    const sid = student.body.data.id;
+    const list = await request(app())
+      .get(`${API}/fees/defaulters?month=8&year=2099&limit=200`)
+      .set(bearer(token));
+    expect(list.status).toBe(200);
+    const row = list.body.data.items.find((i: { studentId: number }) => i.studentId === sid);
+    expect(row?.amountDue).toBe(750);
+  });
+
   it("PATCH /fees/defaulters/:studentId bad body -> 400 Zod", async () => {
     const r = await request(app())
       .patch(`${API}/fees/defaulters/${studentId}`)

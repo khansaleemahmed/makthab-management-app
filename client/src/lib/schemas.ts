@@ -92,14 +92,16 @@ export const staffCreateSchema = z.object({
   baseSalary: z.coerce.number().nonnegative(),
   contactNo: z.string().trim().min(7, 'Enter a valid number'),
   whatsappNo: z.string().trim().min(7, 'Enter a valid number'),
+  status: studentStatusSchema.default('active'),
 });
 export type StaffCreateInput = z.infer<typeof staffCreateSchema>;
 
-export const salaryRunSchema = z.object({
-  staffId: z.coerce.number().int().positive().optional(),
+export const salaryPaymentCreateSchema = z.object({
+  staffId: z.coerce.number().int().positive('Select a staff member'),
   salaryMonth: z.coerce.number().int().min(1).max(12),
   salaryYear: z.coerce.number().int().min(2000).max(2100),
+  grossAmount: z.coerce.number().nonnegative(),
   deductions: z.coerce.number().nonnegative().default(0),
   paymentDate: requiredDate,
 });
-export type SalaryRunInput = z.infer<typeof salaryRunSchema>;
+export type SalaryPaymentCreateInput = z.infer<typeof salaryPaymentCreateSchema>;

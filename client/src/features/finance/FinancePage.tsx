@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import { Field } from '@/components/form/Field';
 import { SelectField } from '@/components/form/SelectField';
 import { CurrencyInput } from '@/components/form/CurrencyInput';
@@ -26,22 +27,20 @@ import { useAuthStore } from '@/store/authStore';
 import {
   expenseCreateSchema,
   type ExpenseCreateInput,
-  staffCreateSchema,
-  type StaffCreateInput,
-  salaryRunSchema,
-  type SalaryRunInput,
 } from '@/lib/schemas';
 import { toDateInput } from '@/lib/format';
-import type { Expense } from '@/types/domain';
+import type { Expense, Staff, SalaryPayment } from '@/types/domain';
+import { StaffForm } from './StaffForm';
+import { SalaryPaymentForm } from './SalaryPaymentForm';
 import {
   useExpenses,
   useAddExpense,
   useUpdateExpense,
   useDeleteExpense,
   useStaff,
-  useAddStaff,
+  useDeleteStaff,
   useSalaries,
-  useRunPayroll,
+  useDeleteSalary,
 } from './api';
 
 const now = new Date();
@@ -301,63 +300,14 @@ function ExpensesTab() {
   );
 }
 
-function StaffDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { t } = useTranslation();
-  const { toast } = useToast();
-  const add = useAddStaff();
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<StaffCreateInput>({ resolver: zodResolver(staffCreateSchema) });
-
-  const onSubmit = handleSubmit((values) => {
-    add.mutate(values, {
-      onSuccess: () => {
-        toast({ title: t('staff.created'), variant: 'success' });
-        reset();
-        onOpenChange(false);
-      },
-      onError: (err) => toast({ title: extractApiError(err).message, variant: 'destructive' }),
-    });
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader><DialogTitle>{t('staff.add')}</DialogTitle></DialogHeader>
-        <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
-          <Field label={t('staff.fullName')} error={errors.fullName?.message} required>
-            <Input {...register('fullName')} />
-          </Field>
-          <Field label={t('staff.role')} error={errors.role?.message} required>
-            <Input {...register('role')} />
-          </Field>
-          <Field label={t('staff.baseSalary')} error={errors.baseSalary?.message} required>
-            <Input type="number" step="0.01" {...register('baseSalary')} />
-          </Field>
-          <Field label={t('staff.contactNo')} error={errors.contactNo?.message} required>
-            <Input {...register('contactNo')} />
-          </Field>
-          <Field label={t('staff.whatsappNo')} error={errors.whatsappNo?.message} required>
-            <Input {...register('whatsappNo')} />
-          </Field>
-          <DialogFooter className="sm:col-span-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('common.cancel')}</Button>
-            <Button type="submit" disabled={add.isPending}>
-              {add.isPending && <Spinner className="me-2" />}{t('common.save')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function StaffTab() {
   const { t, i18n } = useTranslation();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Staff | null>(null);
+  const [deleting, setDeleting] = useState<Staff | null>(null);
+  const role = useAuthStore((s) => s.user?.role);
+  const canManage = role === 'Admin' || role === 'Accountant';
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const { sort, toggle } = useSort({ sortBy: '', sortOrder: 'asc' });
@@ -367,20 +317,44 @@ function StaffTab() {
     sortBy: sort.sortBy || undefined,
     sortOrder: sort.sortBy ? sort.sortOrder : undefined,
   });
+  const del = useDeleteStaff();
 
   const onSort = (key: string) => {
     toggle(key);
     setPage(1);
   };
 
+  const openCreate = () => {
+    setEditing(null);
+    setOpen(true);
+  };
+
+  const openEdit = (s: Staff) => {
+    setEditing(s);
+    setOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (!deleting) return;
+    del.mutate(deleting.id, {
+      onSuccess: () => {
+        toast({ title: t('staff.deleted'), variant: 'success' });
+        setDeleting(null);
+      },
+      onError: (err) => toast({ title: extractApiError(err).message, variant: 'destructive' }),
+    });
+  };
+
   return (
     <Card>
       <CardContent className="space-y-4 pt-6">
         <div className="flex justify-end">
-          <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" />{t('staff.add')}</Button>
+          {canManage && (
+            <Button onClick={openCreate}><Plus className="h-4 w-4" />{t('staff.add')}</Button>
+          )}
         </div>
         {isLoading ? (
-          <LoadingRows cols={4} />
+          <LoadingRows cols={6} />
         ) : isError ? (
           <ErrorState onRetry={refetch} />
         ) : !data || data.items.length === 0 ? (
@@ -399,6 +373,8 @@ function StaffTab() {
                   {t('staff.baseSalary')}
                 </SortableTableHead>
                 <TableHead>{t('staff.contactNo')}</TableHead>
+                <TableHead>{t('common.status')}</TableHead>
+                {canManage && <TableHead className="text-end">{t('common.actions')}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -408,6 +384,23 @@ function StaffTab() {
                   <TableCell>{s.role}</TableCell>
                   <TableCell className="text-end">{formatCurrency(s.baseSalary, i18n.language)}</TableCell>
                   <TableCell>{s.contactNo}</TableCell>
+                  <TableCell>
+                    <Badge variant={s.status === 'active' ? 'success' : 'secondary'}>
+                      {t(`common.${s.status === 'active' ? 'active' : 'inactive'}`)}
+                    </Badge>
+                  </TableCell>
+                  {canManage && (
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" title={t('common.edit')} onClick={() => openEdit(s)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title={t('common.delete')} onClick={() => setDeleting(s)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -426,7 +419,19 @@ function StaffTab() {
           />
         )}
       </CardContent>
-      <StaffDialog open={open} onOpenChange={setOpen} />
+      <StaffForm open={open} onOpenChange={setOpen} staff={editing} />
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(o) => {
+          if (!o) setDeleting(null);
+        }}
+        onConfirm={confirmDelete}
+        title={t('staff.confirmDeleteTitle')}
+        message={t('staff.confirmDelete', { name: deleting?.fullName ?? '' })}
+        confirmLabel={t('common.delete')}
+        destructive
+        pending={del.isPending}
+      />
     </Card>
   );
 }
@@ -434,7 +439,11 @@ function StaffTab() {
 function SalariesTab() {
   const { t, i18n } = useTranslation();
   const { toast } = useToast();
-  const run = useRunPayroll();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<SalaryPayment | null>(null);
+  const [deleting, setDeleting] = useState<SalaryPayment | null>(null);
+  const role = useAuthStore((s) => s.user?.role);
+  const canManage = role === 'Admin' || role === 'Accountant';
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const { sort, toggle } = useSort({ sortBy: '', sortOrder: 'asc' });
@@ -444,61 +453,55 @@ function SalariesTab() {
     sortBy: sort.sortBy || undefined,
     sortOrder: sort.sortBy ? sort.sortOrder : undefined,
   });
+  const del = useDeleteSalary();
 
   const onSort = (key: string) => {
     toggle(key);
     setPage(1);
   };
 
-  const {
-    register,
-    handleSubmit,
-    control,
-    formState: { errors },
-  } = useForm<SalaryRunInput>({
-    resolver: zodResolver(salaryRunSchema),
-    defaultValues: {
-      salaryMonth: now.getMonth() + 1,
-      salaryYear: now.getFullYear(),
-      deductions: 0,
-      paymentDate: toDateInput(now),
-    } as Partial<SalaryRunInput> as SalaryRunInput,
-  });
+  const openCreate = () => {
+    setEditing(null);
+    setOpen(true);
+  };
 
-  const onSubmit = handleSubmit((values) => {
-    run.mutate(values, {
-      onSuccess: () => toast({ title: t('salaries.processed'), variant: 'success' }),
+  const openEdit = (p: SalaryPayment) => {
+    setEditing(p);
+    setOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (!deleting) return;
+    del.mutate(deleting.id, {
+      onSuccess: () => {
+        toast({ title: t('salaries.deleted'), variant: 'success' });
+        setDeleting(null);
+      },
       onError: (err) => toast({ title: extractApiError(err).message, variant: 'destructive' }),
     });
-  });
+  };
 
   return (
     <Card>
-      <CardContent className="space-y-6 pt-6">
-        <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-4">
-          <SelectField
-            name="salaryMonth"
-            control={control}
-            label={t('salaries.month')}
-            error={errors.salaryMonth?.message}
-            required
-            options={Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: monthName(i + 1) }))}
-          />
-          <Field label={t('salaries.year')} error={errors.salaryYear?.message} required>
-            <Input type="number" {...register('salaryYear')} />
-          </Field>
-          <Field label={t('salaries.deductions')} error={errors.deductions?.message}>
-            <Input type="number" step="0.01" {...register('deductions')} />
-          </Field>
-          <div className="flex items-end">
-            <Button type="submit" disabled={run.isPending}>
-              {run.isPending && <Spinner className="me-2" />}{t('salaries.run')}
+      <CardContent className="space-y-4 pt-6">
+        <div className="flex items-center justify-between gap-2">
+          {data && (
+            <div className="text-sm text-muted-foreground">
+              {t('salaries.total')}:{' '}
+              <span className="font-semibold text-foreground">
+                {formatCurrency(data.totalNet, i18n.language)}
+              </span>
+            </div>
+          )}
+          {canManage && (
+            <Button onClick={openCreate} className="ms-auto">
+              <Plus className="h-4 w-4" />{t('salaries.add')}
             </Button>
-          </div>
-        </form>
+          )}
+        </div>
 
         {isLoading ? (
-          <LoadingRows cols={6} />
+          <LoadingRows cols={7} />
         ) : isError ? (
           <ErrorState onRetry={refetch} />
         ) : !data || data.items.length === 0 ? (
@@ -513,7 +516,9 @@ function SalariesTab() {
                 <SortableTableHead sortKey="salaryMonth" sort={sort} onSort={onSort}>
                   {t('salaries.month')}
                 </SortableTableHead>
-                <TableHead>{t('salaries.paymentDate')}</TableHead>
+                <SortableTableHead sortKey="paymentDate" sort={sort} onSort={onSort}>
+                  {t('salaries.paymentDate')}
+                </SortableTableHead>
                 <SortableTableHead sortKey="grossAmount" sort={sort} onSort={onSort} className="text-end">
                   {t('salaries.gross')}
                 </SortableTableHead>
@@ -523,6 +528,7 @@ function SalariesTab() {
                 <SortableTableHead sortKey="netAmount" sort={sort} onSort={onSort} className="text-end">
                   {t('salaries.net')}
                 </SortableTableHead>
+                {canManage && <TableHead className="text-end">{t('common.actions')}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -534,6 +540,18 @@ function SalariesTab() {
                   <TableCell className="text-end">{formatCurrency(p.grossAmount, i18n.language)}</TableCell>
                   <TableCell className="text-end">{formatCurrency(p.deductions, i18n.language)}</TableCell>
                   <TableCell className="text-end">{formatCurrency(p.netAmount, i18n.language)}</TableCell>
+                  {canManage && (
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" title={t('common.edit')} onClick={() => openEdit(p)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title={t('common.delete')} onClick={() => setDeleting(p)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -552,6 +570,23 @@ function SalariesTab() {
           />
         )}
       </CardContent>
+      <SalaryPaymentForm open={open} onOpenChange={setOpen} payment={editing} />
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(o) => {
+          if (!o) setDeleting(null);
+        }}
+        onConfirm={confirmDelete}
+        title={t('salaries.confirmDeleteTitle')}
+        message={t('salaries.confirmDelete', {
+          staff: deleting?.staff?.fullName ?? '',
+          month: deleting ? monthName(deleting.salaryMonth) : '',
+          year: deleting?.salaryYear ?? '',
+        })}
+        confirmLabel={t('common.delete')}
+        destructive
+        pending={del.isPending}
+      />
     </Card>
   );
 }

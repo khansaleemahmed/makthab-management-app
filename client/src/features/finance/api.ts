@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, unwrap } from '@/api/client';
 import type { Expense, Staff, SalaryPayment } from '@/types/domain';
-import type { ExpenseCreateInput, StaffCreateInput, SalaryRunInput } from '@/lib/schemas';
+import type {
+  ExpenseCreateInput,
+  StaffCreateInput,
+  SalaryPaymentCreateInput,
+} from '@/lib/schemas';
 
 export interface ListParams {
   page?: number;
@@ -76,6 +80,43 @@ export function useAddStaff() {
   });
 }
 
+export function useUpdateStaff(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: Partial<StaffCreateInput>) =>
+      unwrap<Staff>((await api.patch(`/staff/${id}`, input)).data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+/**
+ * Upload a staff member's photograph (multipart, field "photo").
+ * The staff record must already exist, so callers pass the id at mutate time —
+ * this lets the same hook serve edit mode and the post-create chain in create mode.
+ */
+export function useUploadStaffPhoto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: number; file: File }) => {
+      const form = new FormData();
+      form.append('photo', file);
+      const res = await api.post(`/staff/${id}/photo`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return unwrap<Staff>(res.data);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
+export function useDeleteStaff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => (await api.delete(`/staff/${id}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
 // ---- Salaries ---------------------------------------------------------------
 export interface SalaryListParams extends ListParams {
   staff_id?: number;
@@ -90,16 +131,39 @@ export function useSalaries(params: SalaryListParams = {}) {
       const payload = unwrap((await api.get('/salaries', { params })).data) as {
         items?: SalaryPayment[];
         total?: number;
+        totalNet?: number;
       };
-      return { items: payload.items ?? [], total: payload.total ?? payload.items?.length ?? 0 };
+      return {
+        items: payload.items ?? [],
+        total: payload.total ?? payload.items?.length ?? 0,
+        totalNet: payload.totalNet ?? 0,
+      };
     },
   });
 }
 
-export function useRunPayroll() {
+export function useAddSalaryPayment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: SalaryRunInput) => (await api.post('/salaries', input)).data,
+    mutationFn: async (input: SalaryPaymentCreateInput) =>
+      unwrap<SalaryPayment>((await api.post('/salaries', input)).data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['salaries'] }),
+  });
+}
+
+export function useUpdateSalary(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: Partial<SalaryPaymentCreateInput>) =>
+      unwrap<SalaryPayment>((await api.patch(`/salaries/${id}`, input)).data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['salaries'] }),
+  });
+}
+
+export function useDeleteSalary() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => (await api.delete(`/salaries/${id}`)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['salaries'] }),
   });
 }

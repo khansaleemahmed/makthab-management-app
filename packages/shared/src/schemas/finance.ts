@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { phoneSchema, sortOrderSchema } from "./common";
+import { phoneSchema, sortOrderSchema, RoleSchema, studentStatusSchema } from "./common";
 
 // ExpenseCreateDto — POST /expenses
 // amount is derived server-side (cost * quantity); it is not accepted from the client.
@@ -43,7 +43,8 @@ export type ExpenseListQuery = z.infer<typeof expenseListQuery>;
 // StaffCreateDto — POST /staff
 export const staffCreateSchema = z.object({
   fullName: z.string().trim().min(1),
-  role: z.string().trim().min(1),
+  // role is one of the shared Admin/Accountant/Teacher values (same set as User.role).
+  role: RoleSchema,
   baseSalary: z.number().nonnegative(),
   contactNo: phoneSchema,
   whatsappNo: phoneSchema,
@@ -53,6 +54,22 @@ export const staffCreateSchema = z.object({
   appRole: z.enum(["Admin", "Accountant", "Teacher"]).optional(),
 });
 export type StaffCreateDto = z.infer<typeof staffCreateSchema>;
+
+// StaffUpdateDto — PATCH /staff/:id (partial). Editable profile fields plus
+// status, so the edit form can reactivate an inactive member (mirrors
+// studentUpdateSchema). username/password/appRole stay create-only (login
+// provisioning isn't edited here).
+export const staffUpdateSchema = z
+  .object({
+    fullName: z.string().trim().min(1),
+    role: RoleSchema,
+    baseSalary: z.number().nonnegative(),
+    contactNo: phoneSchema,
+    whatsappNo: phoneSchema,
+  })
+  .partial()
+  .extend({ status: studentStatusSchema.optional() });
+export type StaffUpdateDto = z.infer<typeof staffUpdateSchema>;
 
 // GET /staff query params
 export const staffSortField = z.enum(["fullName", "role", "baseSalary"]);
@@ -66,15 +83,22 @@ export const staffListQuery = z.object({
 });
 export type StaffListQuery = z.infer<typeof staffListQuery>;
 
-// POST /salaries — process a payroll run for one staff member or all.
-export const salaryRunSchema = z.object({
-  staffId: z.number().int().positive().optional(), // omit => all active staff
+// SalaryPaymentCreateDto — POST /salaries (a single payment entry).
+// netAmount is derived server-side as max(0, grossAmount - deductions); it is
+// never accepted from the client (same rule as expense's cost * quantity).
+export const salaryPaymentCreateSchema = z.object({
+  staffId: z.number().int().positive(),
   salaryMonth: z.number().int().min(1).max(12),
   salaryYear: z.number().int().min(2000).max(2100),
+  grossAmount: z.number().nonnegative(),
   deductions: z.number().nonnegative().default(0),
-  paymentDate: z.coerce.date().optional(),
+  paymentDate: z.coerce.date(),
 });
-export type SalaryRunDto = z.infer<typeof salaryRunSchema>;
+export type SalaryPaymentCreateDto = z.infer<typeof salaryPaymentCreateSchema>;
+
+// SalaryPaymentUpdateDto — PATCH /salaries/:id (partial; netAmount stays server-derived).
+export const salaryPaymentUpdateSchema = salaryPaymentCreateSchema.partial();
+export type SalaryPaymentUpdateDto = z.infer<typeof salaryPaymentUpdateSchema>;
 
 // GET /salaries query params
 export const salarySortField = z.enum([
@@ -84,6 +108,7 @@ export const salarySortField = z.enum([
   "grossAmount",
   "deductions",
   "netAmount",
+  "paymentDate",
 ]);
 export type SalarySortField = z.infer<typeof salarySortField>;
 
@@ -120,6 +145,7 @@ export type StaffDto = {
   baseSalary: number;
   contactNo: string;
   whatsappNo: string;
+  photoPath: string | null;
   status: string;
   createdAt: string;
 };

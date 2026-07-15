@@ -119,9 +119,26 @@ feesRouter.get(
       select: { studentId: true },
     });
     const paidSet = new Set(paid.map((p) => p.studentId));
-    const structures = await prisma.feeStructure.findMany({ where: { feeType: "monthly" } });
-    const structFor = (classId: number, yearId: number) =>
-      structures.find((s) => s.classId === classId && s.academicYearId === yearId)?.amount ?? 0;
+    const structures = await prisma.feeStructure.findMany({
+      where: { feeType: "monthly" },
+      include: { academicYear: true },
+    });
+    // Resolve a class's monthly fee. Prefer an exact classId+academicYearId match,
+    // but a class's FeeStructure is often configured under an older academic year
+    // than the student's current one; an exact-only lookup silently returned 0 in
+    // that case even though an amount genuinely exists. So fall back to that
+    // class's structure with the latest academicYear.startDate, and only return 0
+    // when the class has no structure in any year.
+    const structFor = (classId: number, yearId: number) => {
+      const forClass = structures.filter((s) => s.classId === classId);
+      if (forClass.length === 0) return 0;
+      const exact = forClass.find((s) => s.academicYearId === yearId);
+      if (exact) return exact.amount;
+      const latest = forClass.reduce((a, b) =>
+        a.academicYear.startDate >= b.academicYear.startDate ? a : b
+      );
+      return latest.amount;
+    };
 
     const rows = students
       .filter((s) => !paidSet.has(s.id))

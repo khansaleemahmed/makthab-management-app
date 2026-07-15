@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import {
@@ -5,8 +7,10 @@ import {
   expenseUpdateSchema,
   expenseListQuery,
   staffCreateSchema,
+  staffUpdateSchema,
   staffListQuery,
-  salaryRunSchema,
+  salaryPaymentCreateSchema,
+  salaryPaymentUpdateSchema,
   salaryListQuery,
   type ExpenseListQuery,
   type StaffListQuery,
@@ -19,6 +23,8 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { AppError } from "../middleware/errorHandler";
 import { actorStaffId } from "../lib/actor";
 import { nextVoucherNo } from "../lib/docNo";
+import { FILES_DIR } from "../lib/paths";
+import { uploadStaffPhoto, photoContentType } from "../lib/upload";
 
 // ---- Expenses (Admin, Accountant) ------------------------------------------
 export const expensesRouter = Router();
@@ -209,6 +215,85 @@ staffRouter.post(
   })
 );
 
+// PATCH /staff/:id — edit profile fields (Admin + Accountant; broader than the
+// Students page, which is Admin-only). Login provisioning is not edited here.
+staffRouter.patch(
+  "/:id",
+  validateBody(staffUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await prisma.staff.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, "not_found", "Staff not found");
+    const staff = await prisma.staff.update({ where: { id }, data: req.body });
+    res.json({ data: staff });
+  })
+);
+
+// DELETE /staff/:id — soft delete (status = inactive). Admin + Accountant.
+// Deleting an already-inactive staff member is a deliberate idempotent no-op that
+// still returns 200 with the same shape (not a 409): the confirm-then-delete
+// UX never shows a delete action on an already-deleted row, so a repeat call
+// (double-click, retry) should succeed quietly rather than surface an error.
+staffRouter.delete(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await prisma.staff.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, "not_found", "Staff not found");
+    await prisma.staff.update({ where: { id }, data: { status: "inactive" } });
+    res.json({ data: { id, status: "inactive" } });
+  })
+);
+
+// POST /staff/:id/photo — upload/replace the staff photo.
+staffRouter.post(
+  "/:id/photo",
+  uploadStaffPhoto,
+  asyncHandler(async (req, res) => {
+    if (!req.file) {
+      throw new AppError(400, "no_file", "No photo uploaded (form field must be 'photo')");
+    }
+    const id = Number(req.params.id);
+    const existing = await prisma.staff.findUnique({ where: { id } });
+    if (!existing) {
+      // Defensive: the upload middleware already 404s unknown ids before writing.
+      await fs.promises.rm(req.file.path, { force: true });
+      throw new AppError(404, "not_found", "Staff not found");
+    }
+
+    // Remove the previous photo file so we don't leave orphans on disk.
+    if (existing.photoPath) {
+      await fs.promises.rm(path.join(FILES_DIR, existing.photoPath), { force: true });
+    }
+
+    const photoPath = `photos/${req.file.filename}`;
+    const staff = await prisma.staff.update({ where: { id }, data: { photoPath } });
+    res.json({ data: staff });
+  })
+);
+
+// GET /staff/:id/photo — stream the stored staff photo.
+staffRouter.get(
+  "/:id/photo",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const staff = await prisma.staff.findUnique({
+      where: { id },
+      select: { photoPath: true },
+    });
+    if (!staff) throw new AppError(404, "not_found", "Staff not found");
+    if (!staff.photoPath) throw new AppError(404, "not_found", "Staff has no photo");
+
+    const abs = path.join(FILES_DIR, staff.photoPath);
+    if (!fs.existsSync(abs)) throw new AppError(404, "not_found", "Photo file missing");
+
+    res.setHeader("Content-Type", photoContentType(abs));
+    const stream = fs.createReadStream(abs);
+    stream.on("error", (err) => res.destroy(err));
+    stream.pipe(res);
+  })
+);
+
 // ---- Salaries (Admin, Accountant) ------------------------------------------
 export const salariesRouter = Router();
 salariesRouter.use(requireAuth, requireRole("Admin", "Accountant"));
@@ -227,7 +312,7 @@ salariesRouter.get(
         ? { staff: { fullName: q.sortOrder } }
         : { [q.sortBy]: q.sortOrder }
       : { id: "desc" as const };
-    const [items, total] = await Promise.all([
+    const [items, total, agg] = await Promise.all([
       prisma.salaryPayment.findMany({
         where,
         include: { staff: true },
@@ -236,49 +321,99 @@ salariesRouter.get(
         take: q.limit,
       }),
       prisma.salaryPayment.count({ where }),
+      prisma.salaryPayment.aggregate({ _sum: { netAmount: true }, where }),
     ]);
-    res.json({ data: { items, total, page: q.page, limit: q.limit } });
+    const totalNet = agg._sum.netAmount ?? 0;
+    res.json({ data: { items, total, page: q.page, limit: q.limit, totalNet } });
   })
 );
 
-// POST /salaries — run payroll for one staff member or all active staff.
+// POST /salaries — record a single salary payment. netAmount is derived
+// server-side as max(0, gross - deductions); a client-sent value is never trusted.
 salariesRouter.post(
   "/",
-  validateBody(salaryRunSchema),
+  validateBody(salaryPaymentCreateSchema),
   asyncHandler(async (req, res) => {
-    const dto = req.body as typeof salaryRunSchema._output;
-    const staffList = dto.staffId
-      ? await prisma.staff.findMany({ where: { id: dto.staffId } })
-      : await prisma.staff.findMany({ where: { status: "active" } });
-    if (staffList.length === 0) throw new AppError(404, "not_found", "No staff to process");
+    const dto = req.body as typeof salaryPaymentCreateSchema._output;
+    const staff = await prisma.staff.findUnique({ where: { id: dto.staffId } });
+    if (!staff) throw new AppError(404, "not_found", "Staff not found");
 
-    const paymentDate = dto.paymentDate ?? new Date();
-    const payments = [];
-    for (const staff of staffList) {
-      const gross = staff.baseSalary;
-      const net = Math.max(0, gross - dto.deductions);
-      const payment = await prisma.salaryPayment.upsert({
-        where: {
-          staffId_salaryMonth_salaryYear: {
-            staffId: staff.id,
-            salaryMonth: dto.salaryMonth,
-            salaryYear: dto.salaryYear,
-          },
-        },
-        update: { grossAmount: gross, deductions: dto.deductions, netAmount: net, paymentDate },
-        create: {
-          staffId: staff.id,
+    // Pre-check the (staffId, month, year) uniqueness so we return a clean 409
+    // rather than relying on the DB constraint to throw.
+    const duplicate = await prisma.salaryPayment.findUnique({
+      where: {
+        staffId_salaryMonth_salaryYear: {
+          staffId: dto.staffId,
           salaryMonth: dto.salaryMonth,
           salaryYear: dto.salaryYear,
-          grossAmount: gross,
-          deductions: dto.deductions,
-          netAmount: net,
-          paymentDate,
         },
-        include: { staff: true },
-      });
-      payments.push(payment);
+      },
+    });
+    if (duplicate) {
+      throw new AppError(409, "duplicate", "A salary payment already exists for this staff/month/year");
     }
-    res.status(201).json({ data: { processed: payments.length, payments } });
+
+    const netAmount = Math.max(0, dto.grossAmount - dto.deductions);
+    const payment = await prisma.salaryPayment.create({
+      data: {
+        staffId: dto.staffId,
+        salaryMonth: dto.salaryMonth,
+        salaryYear: dto.salaryYear,
+        grossAmount: dto.grossAmount,
+        deductions: dto.deductions,
+        netAmount,
+        paymentDate: dto.paymentDate,
+      },
+      include: { staff: true },
+    });
+    res.status(201).json({ data: payment });
+  })
+);
+
+// PATCH /salaries/:id — edit an entry (Admin + Accountant). netAmount is
+// re-derived from the effective gross/deductions; a client-sent net is ignored.
+salariesRouter.patch(
+  "/:id",
+  validateBody(salaryPaymentUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await prisma.salaryPayment.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, "not_found", "Salary payment not found");
+
+    const dto = req.body as typeof salaryPaymentUpdateSchema._output;
+    if (dto.staffId !== undefined) {
+      const staff = await prisma.staff.findUnique({ where: { id: dto.staffId } });
+      if (!staff) throw new AppError(404, "not_found", "Staff not found");
+    }
+    const grossAmount = dto.grossAmount ?? existing.grossAmount;
+    const deductions = dto.deductions ?? existing.deductions;
+    const netAmount = Math.max(0, grossAmount - deductions);
+
+    const payment = await prisma.salaryPayment.update({
+      where: { id },
+      data: {
+        ...(dto.staffId !== undefined ? { staffId: dto.staffId } : {}),
+        ...(dto.salaryMonth !== undefined ? { salaryMonth: dto.salaryMonth } : {}),
+        ...(dto.salaryYear !== undefined ? { salaryYear: dto.salaryYear } : {}),
+        ...(dto.grossAmount !== undefined ? { grossAmount: dto.grossAmount } : {}),
+        ...(dto.deductions !== undefined ? { deductions: dto.deductions } : {}),
+        netAmount,
+        ...(dto.paymentDate !== undefined ? { paymentDate: dto.paymentDate } : {}),
+      },
+      include: { staff: true },
+    });
+    res.json({ data: payment });
+  })
+);
+
+// DELETE /salaries/:id — hard delete (Admin + Accountant). No model FKs onto it.
+salariesRouter.delete(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await prisma.salaryPayment.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, "not_found", "Salary payment not found");
+    await prisma.salaryPayment.delete({ where: { id } });
+    res.json({ data: { id } });
   })
 );
