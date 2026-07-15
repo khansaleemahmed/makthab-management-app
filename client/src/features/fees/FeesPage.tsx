@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, FileText, MessageCircle } from 'lucide-react';
+import { Plus, FileText, MessageCircle, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,11 +11,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { LoadingRows, ErrorState, EmptyState } from '@/components/QueryState';
 import { Pagination, DEFAULT_PAGE_SIZE } from '@/components/Pagination';
 import { SortableTableHead, useSort } from '@/components/SortableTableHead';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/ui/use-toast';
 import { formatCurrency, monthName } from '@/lib/format';
 import { extractApiError } from '@/api/client';
 import { openWhatsApp } from '@/lib/download';
-import { useFees, useDefaulters, downloadReceipt, sendReceiptWhatsApp } from './api';
+import { useAuthStore } from '@/store/authStore';
+import { useFees, useDefaulters, useDeleteFee, downloadReceipt, sendReceiptWhatsApp } from './api';
 import { FeeForm } from './FeeForm';
 import { FeeStructures } from './FeeStructures';
 import type { FeePayment } from '@/types/domain';
@@ -54,15 +56,54 @@ function MonthYearPicker({
   );
 }
 
-function PaymentsTab() {
+function AdmissionYearPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useTranslation();
+  const years = [now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2, now.getFullYear() - 3];
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">{t('fees.allYears')}</SelectItem>
+        {years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/**
+ * Shared payments table used by both the Monthly and Admission tabs. The caller
+ * supplies the fee-type filter and its own picker controls; this component owns
+ * the paging, sorting, and edit/delete flow so neither tab duplicates it.
+ */
+function PaymentsTable({
+  feeType,
+  month,
+  year,
+  filters,
+}: {
+  feeType: 'monthly' | 'admission';
+  month?: number;
+  year?: number;
+  filters: ReactNode;
+}) {
   const { t, i18n } = useTranslation();
   const { toast } = useToast();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
+  const role = useAuthStore((s) => s.user?.role);
+  const canManage = role === 'Admin' || role === 'Accountant';
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [editing, setEditing] = useState<FeePayment | null>(null);
+  const [deleting, setDeleting] = useState<FeePayment | null>(null);
   const { sort, toggle } = useSort({ sortBy: '', sortOrder: 'asc' });
+  const del = useDeleteFee();
+
+  // Reset to the first page whenever the filter selection changes.
+  useEffect(() => {
+    setPage(1);
+  }, [feeType, month, year]);
+
   const { data, isLoading, isError, refetch } = useFees({
+    feeType,
     month,
     year,
     page,
@@ -93,22 +134,22 @@ function PaymentsTab() {
     }
   };
 
+  const confirmDelete = () => {
+    if (!deleting) return;
+    del.mutate(deleting.id, {
+      onSuccess: () => {
+        toast({ title: t('fees.deleted'), variant: 'success' });
+        setDeleting(null);
+      },
+      onError: (err) => toast({ title: extractApiError(err).message, variant: 'destructive' }),
+    });
+  };
+
   return (
     <Card>
       <CardContent className="space-y-4 pt-6">
         <div className="flex items-center justify-between gap-2">
-          <MonthYearPicker
-            month={month}
-            year={year}
-            onMonth={(m) => {
-              setMonth(m);
-              setPage(1);
-            }}
-            onYear={(y) => {
-              setYear(y);
-              setPage(1);
-            }}
-          />
+          {filters}
           {data && (
             <div className="text-sm text-muted-foreground">
               {t('common.total')}:{' '}
@@ -119,7 +160,7 @@ function PaymentsTab() {
           )}
         </div>
         {isLoading ? (
-          <LoadingRows cols={6} />
+          <LoadingRows cols={7} />
         ) : isError ? (
           <ErrorState onRetry={refetch} />
         ) : !data || data.items.length === 0 ? (
@@ -128,8 +169,8 @@ function PaymentsTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <SortableTableHead sortKey="receiptNo" sort={sort} onSort={onSort}>
-                  {t('fees.receiptNo')}
+                <SortableTableHead sortKey="admissionNo" sort={sort} onSort={onSort}>
+                  {t('students.admissionNo')}
                 </SortableTableHead>
                 <SortableTableHead sortKey="student" sort={sort} onSort={onSort}>
                   {t('fees.student')}
@@ -140,6 +181,9 @@ function PaymentsTab() {
                 <SortableTableHead sortKey="amountPaid" sort={sort} onSort={onSort} className="text-end">
                   {t('fees.amountPaid')}
                 </SortableTableHead>
+                <SortableTableHead sortKey="receiptNo" sort={sort} onSort={onSort}>
+                  {t('fees.receiptNo')}
+                </SortableTableHead>
                 <TableHead>{t('common.status')}</TableHead>
                 <TableHead className="text-end">{t('common.actions')}</TableHead>
               </TableRow>
@@ -147,10 +191,11 @@ function PaymentsTab() {
             <TableBody>
               {data.items.map((f) => (
                 <TableRow key={f.id}>
-                  <TableCell className="font-medium">{f.receiptNo}</TableCell>
+                  <TableCell className="font-medium">{f.student?.admissionNo ?? '-'}</TableCell>
                   <TableCell>{f.student?.fullName ?? f.studentId}</TableCell>
                   <TableCell className="capitalize">{f.feeType}</TableCell>
                   <TableCell className="text-end">{formatCurrency(f.amountPaid, i18n.language)}</TableCell>
+                  <TableCell>{f.receiptNo}</TableCell>
                   <TableCell>
                     <Badge variant={f.amountPaid >= f.amountDue ? 'success' : 'warning'}>
                       {f.amountPaid >= f.amountDue ? t('fees.paid') : t('fees.unpaid')}
@@ -164,6 +209,16 @@ function PaymentsTab() {
                       <Button variant="ghost" size="icon" title={t('fees.whatsapp')} onClick={() => whatsapp(f)}>
                         <MessageCircle className="h-4 w-4 text-emerald-600" />
                       </Button>
+                      {canManage && (
+                        <>
+                          <Button variant="ghost" size="icon" title={t('common.edit')} onClick={() => setEditing(f)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title={t('common.delete')} onClick={() => setDeleting(f)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -184,7 +239,55 @@ function PaymentsTab() {
           />
         )}
       </CardContent>
+
+      <FeeForm
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+        fee={editing}
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+        onConfirm={confirmDelete}
+        title={t('fees.confirmDeleteTitle')}
+        message={t('fees.confirmDelete', {
+          receipt: deleting?.receiptNo ?? '',
+          name: deleting?.student?.fullName ?? '',
+        })}
+        confirmLabel={t('common.delete')}
+        destructive
+        pending={del.isPending}
+      />
     </Card>
+  );
+}
+
+function MonthlyTab() {
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  return (
+    <PaymentsTable
+      feeType="monthly"
+      month={month}
+      year={year}
+      filters={<MonthYearPicker month={month} year={year} onMonth={setMonth} onYear={setYear} />}
+    />
+  );
+}
+
+function AdmissionTab() {
+  const [year, setYear] = useState<string>('all');
+  return (
+    <PaymentsTable
+      feeType="admission"
+      year={year === 'all' ? undefined : Number(year)}
+      filters={<AdmissionYearPicker value={year} onChange={setYear} />}
+    />
   );
 }
 
@@ -262,13 +365,15 @@ export function FeesPage() {
           </Button>
         }
       />
-      <Tabs defaultValue="payments">
+      <Tabs defaultValue="monthly">
         <TabsList>
-          <TabsTrigger value="payments">{t('fees.title')}</TabsTrigger>
+          <TabsTrigger value="monthly">{t('fees.monthly')}</TabsTrigger>
+          <TabsTrigger value="admission">{t('fees.admission')}</TabsTrigger>
           <TabsTrigger value="defaulters">{t('fees.defaulters')}</TabsTrigger>
           <TabsTrigger value="structures">{t('fees.structures')}</TabsTrigger>
         </TabsList>
-        <TabsContent value="payments"><PaymentsTab /></TabsContent>
+        <TabsContent value="monthly"><MonthlyTab /></TabsContent>
+        <TabsContent value="admission"><AdmissionTab /></TabsContent>
         <TabsContent value="defaulters"><DefaultersTab /></TabsContent>
         <TabsContent value="structures"><FeeStructures /></TabsContent>
       </Tabs>

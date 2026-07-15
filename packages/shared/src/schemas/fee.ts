@@ -15,6 +15,10 @@ export const feePaymentCreateSchema = z.object({
 });
 export type FeePaymentCreateDto = z.infer<typeof feePaymentCreateSchema>;
 
+// FeePaymentUpdateDto — PATCH /fees/:id (all fields optional; receiptNo stays immutable server-side).
+export const feePaymentUpdateSchema = feePaymentCreateSchema.partial();
+export type FeePaymentUpdateDto = z.infer<typeof feePaymentUpdateSchema>;
+
 // GET /fees query params
 export const feeSortField = z.enum([
   "receiptNo",
@@ -22,11 +26,13 @@ export const feeSortField = z.enum([
   "amountPaid",
   "paymentDate",
   "student",
+  "admissionNo",
 ]);
 export type FeeSortField = z.infer<typeof feeSortField>;
 
 export const feeListQuery = z.object({
   student_id: z.coerce.number().int().positive().optional(),
+  feeType: feeTypeSchema.optional(),
   month: z.coerce.number().int().min(1).max(12).optional(),
   year: z.coerce.number().int().optional(),
   status: z.enum(["paid", "unpaid"]).optional(),

@@ -42,7 +42,9 @@
     "print": "Print",
     "pdf": "PDF",
     "excel": "Excel",
-    "total": "Total"
+    "total": "Total",
+    "noResults": "No results found",
+    "searchStudent": "Search student…"
   },
   "pagination": {
     "rowsPerPage": "Rows per page",
@@ -120,7 +122,15 @@
     "paid": "Paid",
     "unpaid": "Unpaid",
     "structures": "Fee Structures",
-    "created": "Payment recorded successfully"
+    "created": "Payment recorded successfully",
+    "edit": "Edit Fee",
+    "updated": "Payment updated successfully",
+    "deleted": "Payment deleted successfully",
+    "confirmDeleteTitle": "Delete Payment",
+    "confirmDelete": "Delete receipt {{receipt}} for {{name}}? This cannot be undone.",
+    "monthly": "Monthly",
+    "admission": "Admission",
+    "allYears": "All"
   },
   "attendance": {
     "title": "Attendance",

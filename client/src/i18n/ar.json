@@ -42,7 +42,9 @@
     "print": "طباعة",
     "pdf": "PDF",
     "excel": "Excel",
-    "total": "المجموع"
+    "total": "المجموع",
+    "noResults": "لا توجد نتائج",
+    "searchStudent": "ابحث عن طالب…"
   },
   "pagination": {
     "rowsPerPage": "صفوف لكل صفحة",
@@ -120,7 +122,15 @@
     "paid": "مدفوع",
     "unpaid": "غير مدفوع",
     "structures": "هياكل الرسوم",
-    "created": "تم تسجيل الدفعة بنجاح"
+    "created": "تم تسجيل الدفعة بنجاح",
+    "edit": "تعديل الرسوم",
+    "updated": "تم تحديث الدفعة بنجاح",
+    "deleted": "تم حذف الدفعة بنجاح",
+    "confirmDeleteTitle": "حذف الدفعة",
+    "confirmDelete": "حذف الإيصال {{receipt}} للطالب {{name}}؟ لا يمكن التراجع عن هذا.",
+    "monthly": "شهري",
+    "admission": "القبول",
+    "allYears": "الكل"
   },
   "attendance": {
     "title": "الحضور",

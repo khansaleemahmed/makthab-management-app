@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
@@ -13,27 +14,33 @@ import { Input } from '@/components/ui/input';
 import { CurrencyInput } from '@/components/form/CurrencyInput';
 import { Field } from '@/components/form/Field';
 import { SelectField } from '@/components/form/SelectField';
+import { AutocompleteField } from '@/components/form/AutocompleteField';
 import { Spinner } from '@/components/ui/spinner';
 import { useToast } from '@/components/ui/use-toast';
 import { feePaymentCreateSchema, type FeePaymentCreateInput } from '@/lib/schemas';
 import { useStudentOptions } from '@/features/students/useStudentOptions';
 import { toDateInput, monthName } from '@/lib/format';
 import { extractApiError } from '@/api/client';
-import { useRecordPayment } from './api';
+import { useRecordPayment, useUpdateFee } from './api';
+import type { FeePayment } from '@/types/domain';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   presetStudentId?: number;
+  fee?: FeePayment | null;
 }
 
 const FEE_TYPES = ['admission', 'monthly', 'annual', 'other'] as const;
 const METHODS = ['cash', 'upi', 'bank', 'cheque', 'card'] as const;
 
-export function FeeForm({ open, onOpenChange, presetStudentId }: Props) {
+export function FeeForm({ open, onOpenChange, presetStudentId, fee }: Props) {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const isEdit = fee != null;
   const record = useRecordPayment();
+  const update = useUpdateFee(fee?.id ?? 0);
+  const mutation = isEdit ? update : record;
   const { options: studentOptions } = useStudentOptions();
 
   const {
@@ -55,12 +62,38 @@ export function FeeForm({ open, onOpenChange, presetStudentId }: Props) {
     } as Partial<FeePaymentCreateInput> as FeePaymentCreateInput,
   });
 
+  useEffect(() => {
+    if (!open) return;
+    reset(
+      fee
+        ? ({
+            studentId: fee.studentId,
+            feeType: fee.feeType,
+            feeMonth: fee.feeMonth ?? undefined,
+            feeYear: fee.feeYear,
+            amountDue: fee.amountDue,
+            amountPaid: fee.amountPaid,
+            waiverAmount: fee.waiverAmount,
+            paymentDate: fee.paymentDate.slice(0, 10),
+            paymentMethod: fee.paymentMethod,
+          } as unknown as FeePaymentCreateInput)
+        : ({
+            studentId: presetStudentId,
+            feeType: 'monthly',
+            feeYear: new Date().getFullYear(),
+            paymentMethod: 'cash',
+            paymentDate: toDateInput(new Date()),
+            waiverAmount: 0,
+          } as Partial<FeePaymentCreateInput> as FeePaymentCreateInput),
+    );
+  }, [open, fee, presetStudentId, reset]);
+
   const feeType = watch('feeType');
 
   const onSubmit = handleSubmit((values) => {
-    record.mutate(values, {
+    mutation.mutate(values, {
       onSuccess: () => {
-        toast({ title: t('fees.created'), variant: 'success' });
+        toast({ title: t(isEdit ? 'fees.updated' : 'fees.created'), variant: 'success' });
         reset();
         onOpenChange(false);
       },
@@ -72,28 +105,20 @@ export function FeeForm({ open, onOpenChange, presetStudentId }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{t('fees.collect')}</DialogTitle>
+          <DialogTitle>{t(isEdit ? 'fees.edit' : 'fees.collect')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2" noValidate>
           <div className="sm:col-span-2">
-            <SelectField
+            <AutocompleteField
               name="studentId"
               control={control}
               label={t('fees.student')}
               error={errors.studentId?.message}
               required
-              placeholder={t('fees.student')}
+              placeholder={t('common.searchStudent')}
               options={studentOptions}
             />
           </div>
-          <SelectField
-            name="feeType"
-            control={control}
-            label={t('fees.feeType')}
-            error={errors.feeType?.message}
-            required
-            options={FEE_TYPES.map((v) => ({ value: v, label: v }))}
-          />
           {feeType === 'monthly' && (
             <SelectField
               name="feeMonth"
@@ -106,6 +131,14 @@ export function FeeForm({ open, onOpenChange, presetStudentId }: Props) {
           <Field label={t('fees.year')} error={errors.feeYear?.message} required>
             <Input type="number" {...register('feeYear')} />
           </Field>
+          <SelectField
+            name="feeType"
+            control={control}
+            label={t('fees.feeType')}
+            error={errors.feeType?.message}
+            required
+            options={FEE_TYPES.map((v) => ({ value: v, label: v }))}
+          />
           <Field label={t('fees.amountDue')} error={errors.amountDue?.message} required>
             <CurrencyInput step="0.01" {...register('amountDue')} />
           </Field>
@@ -131,8 +164,8 @@ export function FeeForm({ open, onOpenChange, presetStudentId }: Props) {
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={record.isPending}>
-              {record.isPending && <Spinner className="me-2" />}
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending && <Spinner className="me-2" />}
               {t('common.save')}
             </Button>
           </DialogFooter>

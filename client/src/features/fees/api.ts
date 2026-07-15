@@ -6,6 +6,7 @@ import type { FeePaymentCreateInput, FeeStructureCreateInput } from '@/lib/schem
 
 export interface FeeListParams {
   student_id?: number;
+  feeType?: 'admission' | 'monthly' | 'annual' | 'other';
   month?: number;
   year?: number;
   status?: 'paid' | 'unpaid';
@@ -47,6 +48,29 @@ export function useRecordPayment() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fees'] });
       qc.invalidateQueries({ queryKey: ['fees', 'defaulters'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useUpdateFee(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: Partial<FeePaymentCreateInput>) =>
+      unwrap<FeePayment>((await api.patch(`/fees/${id}`, input)).data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fees'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useDeleteFee() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => (await api.delete(`/fees/${id}`)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fees'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });

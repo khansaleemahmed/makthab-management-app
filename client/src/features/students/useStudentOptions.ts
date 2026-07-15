@@ -7,7 +7,7 @@ import type { Option } from '@/components/form/SelectField';
  * client-side; adequate for a single madrasa's roster size.
  */
 export function useStudentOptions(): { options: Option[]; isLoading: boolean } {
-  const { data, isLoading } = useStudents({ status: 'active', limit: 500 });
+  const { data, isLoading } = useStudents({ status: 'active', limit: 200 });
   const options = useMemo<Option[]>(
     () =>
       (data?.items ?? []).map((s) => ({

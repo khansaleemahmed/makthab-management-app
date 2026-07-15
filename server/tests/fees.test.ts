@@ -112,5 +112,180 @@ describeApi("fees", () => {
     expect([200, 201]).toContain(r.status);
   });
 
-  it.todo("Teacher role cannot record fees -> 403 (§6 roles)");
+  it("PATCH /fees/:id -> partial update writes only sent fields {data}", async () => {
+    const created = await request(app()).post(`${API}/fees`).set(bearer(token)).send({
+      studentId,
+      feeType: "monthly",
+      feeMonth: 7,
+      feeYear: 2026,
+      amountDue: 500,
+      amountPaid: 200,
+      paymentDate: "2026-07-05",
+      paymentMethod: "cash",
+      waiverAmount: 50,
+    });
+    const id = created.body.data.id;
+    const r = await request(app())
+      .patch(`${API}/fees/${id}`)
+      .set(bearer(token))
+      .send({ amountPaid: 500, paymentMethod: "upi" });
+    expect(r.status).toBe(200);
+    expect(r.body.data.amountPaid).toBe(500);
+    expect(r.body.data.paymentMethod).toBe("upi");
+    // untouched fields preserved (waiverAmount not reset despite its schema default)
+    expect(r.body.data.amountDue).toBe(500);
+    expect(r.body.data.feeMonth).toBe(7);
+    expect(r.body.data.waiverAmount).toBe(50);
+  });
+
+  it("PATCH /fees/:id missing -> 404", async () => {
+    const r = await request(app())
+      .patch(`${API}/fees/99999999`)
+      .set(bearer(token))
+      .send({ amountPaid: 10 });
+    expect(r.status).toBe(404);
+  });
+
+  it("PATCH /fees/:id -> receiptNo is immutable (ignored, not an error)", async () => {
+    const created = await request(app()).post(`${API}/fees`).set(bearer(token)).send({
+      studentId,
+      feeType: "monthly",
+      feeMonth: 9,
+      feeYear: 2026,
+      amountDue: 300,
+      amountPaid: 300,
+      paymentDate: "2026-09-05",
+      paymentMethod: "cash",
+    });
+    const id = created.body.data.id;
+    const original = created.body.data.receiptNo;
+    const r = await request(app())
+      .patch(`${API}/fees/${id}`)
+      .set(bearer(token))
+      .send({ receiptNo: "HACKED-0001", amountPaid: 1 });
+    expect(r.status).toBe(200);
+    expect(r.body.data.receiptNo).toBe(original);
+    expect(r.body.data.amountPaid).toBe(1);
+  });
+
+  it("PATCH /fees/:id -> feeMonth can be explicitly nulled", async () => {
+    const created = await request(app()).post(`${API}/fees`).set(bearer(token)).send({
+      studentId,
+      feeType: "monthly",
+      feeMonth: 10,
+      feeYear: 2026,
+      amountDue: 300,
+      amountPaid: 300,
+      paymentDate: "2026-10-05",
+      paymentMethod: "cash",
+    });
+    const id = created.body.data.id;
+    const r = await request(app())
+      .patch(`${API}/fees/${id}`)
+      .set(bearer(token))
+      .send({ feeMonth: null });
+    expect(r.status).toBe(200);
+    expect(r.body.data.feeMonth).toBeNull();
+  });
+
+  it("DELETE /fees/:id -> removes the row {data:{id}}", async () => {
+    const created = await request(app()).post(`${API}/fees`).set(bearer(token)).send({
+      studentId,
+      feeType: "monthly",
+      feeMonth: 11,
+      feeYear: 2026,
+      amountDue: 300,
+      amountPaid: 300,
+      paymentDate: "2026-11-05",
+      paymentMethod: "cash",
+    });
+    const id = created.body.data.id;
+    const r = await request(app()).delete(`${API}/fees/${id}`).set(bearer(token));
+    expect(r.status).toBe(200);
+    expect(r.body.data.id).toBe(id);
+    const after = await request(app()).get(`${API}/fees/${id}`).set(bearer(token));
+    expect(after.status).toBe(404);
+  });
+
+  it("DELETE /fees/:id missing -> 404", async () => {
+    const r = await request(app()).delete(`${API}/fees/99999999`).set(bearer(token));
+    expect(r.status).toBe(404);
+  });
+
+  it("GET /fees?feeType=admission with no year -> spans all years; year filters it", async () => {
+    for (const y of [2023, 2024]) {
+      await request(app()).post(`${API}/fees`).set(bearer(token)).send({
+        studentId,
+        feeType: "admission",
+        feeYear: y,
+        amountDue: 1000,
+        amountPaid: 1000,
+        paymentDate: `${y}-01-10`,
+        paymentMethod: "cash",
+      });
+    }
+    const all = await request(app())
+      .get(`${API}/fees?feeType=admission&student_id=${studentId}&limit=200`)
+      .set(bearer(token));
+    expect(all.status).toBe(200);
+    expect(all.body.data.items.every((i: any) => i.feeType === "admission")).toBe(true);
+    const years = new Set(all.body.data.items.map((i: any) => i.feeYear));
+    expect(years.has(2023)).toBe(true);
+    expect(years.has(2024)).toBe(true);
+
+    const one = await request(app())
+      .get(`${API}/fees?feeType=admission&year=2023&student_id=${studentId}&limit=200`)
+      .set(bearer(token));
+    expect(one.status).toBe(200);
+    expect(one.body.data.items.length).toBeGreaterThan(0);
+    expect(one.body.data.items.every((i: any) => i.feeYear === 2023)).toBe(true);
+    expect(one.body.data.items.every((i: any) => i.feeType === "admission")).toBe(true);
+  });
+
+  it("GET /fees?feeType=monthly&year&month -> filters to that period", async () => {
+    const r = await request(app())
+      .get(`${API}/fees?feeType=monthly&year=2026&month=6&student_id=${studentId}`)
+      .set(bearer(token));
+    expect(r.status).toBe(200);
+    expect(
+      r.body.data.items.every(
+        (i: any) => i.feeType === "monthly" && i.feeYear === 2026 && i.feeMonth === 6
+      )
+    ).toBe(true);
+  });
+
+  it("GET /fees?sortBy=admissionNo -> ordered by related student's admissionNo", async () => {
+    const asc = await request(app())
+      .get(`${API}/fees?sortBy=admissionNo&sortOrder=asc&limit=200`)
+      .set(bearer(token));
+    expect(asc.status).toBe(200);
+    const nos = asc.body.data.items
+      .map((i: any) => i.student?.admissionNo)
+      .filter((n: unknown): n is string => typeof n === "string");
+    // admissionNo lives on the related Student, so orderBy is { student: { admissionNo } }.
+    const sorted = [...nos].sort();
+    expect(nos).toEqual(sorted);
+  });
+
+  it("Teacher role is blocked from fee write endpoints -> 403 (§6 roles)", async () => {
+    const teacher = await login(CREDS.teacher.username, CREDS.teacher.password);
+    const post = await request(app()).post(`${API}/fees`).set(bearer(teacher)).send({
+      studentId,
+      feeType: "monthly",
+      feeMonth: 6,
+      feeYear: 2026,
+      amountDue: 500,
+      amountPaid: 500,
+      paymentDate: "2026-06-05",
+      paymentMethod: "cash",
+    });
+    expect(post.status).toBe(403);
+    const patch = await request(app())
+      .patch(`${API}/fees/${feeId}`)
+      .set(bearer(teacher))
+      .send({ amountPaid: 1 });
+    expect(patch.status).toBe(403);
+    const del = await request(app()).delete(`${API}/fees/${feeId}`).set(bearer(teacher));
+    expect(del.status).toBe(403);
+  });
 });

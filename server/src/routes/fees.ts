@@ -3,6 +3,7 @@ import path from "node:path";
 import { Router } from "express";
 import {
   feePaymentCreateSchema,
+  feePaymentUpdateSchema,
   feeListQuery,
   defaultersQuery,
   feeStructureCreateSchema,
@@ -160,11 +161,14 @@ feesRouter.get(
     const q = res.locals.query as FeeListQuery;
     const where: Record<string, unknown> = {};
     if (q.student_id) where.studentId = q.student_id;
+    if (q.feeType) where.feeType = q.feeType;
     if (q.month) where.feeMonth = q.month;
     if (q.year) where.feeYear = q.year;
     const orderBy = q.sortBy
       ? q.sortBy === "student"
         ? { student: { fullName: q.sortOrder } }
+        : q.sortBy === "admissionNo"
+        ? { student: { admissionNo: q.sortOrder } }
         : { [q.sortBy]: q.sortOrder }
       : { id: "desc" as const };
     const skip = (q.page - 1) * q.limit;
@@ -198,6 +202,60 @@ feesRouter.get(
     const fee = await loadFee(Number(req.params.id));
     if (!fee) throw new AppError(404, "not_found", "Payment not found");
     res.json({ data: fee });
+  })
+);
+
+// PATCH /fees/:id — edit a payment (Admin + Accountant). receiptNo is immutable
+// (it's not part of the update schema, so there's no way to change it here).
+feesRouter.patch(
+  "/:id",
+  validateBody(feePaymentUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await prisma.feePayment.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, "not_found", "Payment not found");
+
+    const dto = req.body as typeof feePaymentUpdateSchema._output;
+    if (dto.studentId !== undefined) {
+      const student = await prisma.student.findUnique({ where: { id: dto.studentId } });
+      if (!student) throw new AppError(404, "not_found", "Student not found");
+    }
+
+    // Prisma skips `undefined` fields, so only the keys the client sent are
+    // written; feeMonth can be set to null to clear a monthly period.
+    const fee = await prisma.feePayment.update({
+      where: { id },
+      data: {
+        studentId: dto.studentId,
+        feeType: dto.feeType,
+        feeMonth: dto.feeMonth,
+        feeYear: dto.feeYear,
+        amountDue: dto.amountDue,
+        amountPaid: dto.amountPaid,
+        paymentDate: dto.paymentDate,
+        paymentMethod: dto.paymentMethod,
+        waiverAmount: dto.waiverAmount,
+      },
+      include: { student: true },
+    });
+    res.json({ data: fee });
+  })
+);
+
+// DELETE /fees/:id — hard-delete a payment (Admin + Accountant) and best-effort
+// remove its receipt PDF from disk.
+feesRouter.delete(
+  "/:id",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const fee = await prisma.feePayment.findUnique({ where: { id } });
+    if (!fee) throw new AppError(404, "not_found", "Payment not found");
+
+    await prisma.feePayment.delete({ where: { id } });
+    if (fee.pdfPath) {
+      await fs.promises.rm(fee.pdfPath, { force: true }).catch(() => {});
+    }
+    res.json({ data: { id } });
   })
 );
 
