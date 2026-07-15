@@ -56,6 +56,11 @@ export const feePaymentCreateSchema = z.object({
 });
 export type FeePaymentCreateInput = z.infer<typeof feePaymentCreateSchema>;
 
+export const defaulterUpdateSchema = z.object({
+  amountDue: z.coerce.number().nonnegative(),
+});
+export type DefaulterUpdateInput = z.infer<typeof defaulterUpdateSchema>;
+
 export const feeStructureCreateSchema = z.object({
   classId: z.coerce.number().int().positive('Select a class'),
   academicYearId: z.coerce.number().int().positive('Select a year'),

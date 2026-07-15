@@ -75,6 +75,7 @@
     "title": "Students",
     "admit": "Admit Student",
     "admissionNo": "Admission No.",
+    "admissionDate": "Admission Date",
     "fullName": "Full Name",
     "fatherName": "Father's Name",
     "dateOfBirth": "Date of Birth",
@@ -130,7 +131,13 @@
     "confirmDelete": "Delete receipt {{receipt}} for {{name}}? This cannot be undone.",
     "monthly": "Monthly",
     "admission": "Admission",
-    "allYears": "All"
+    "allYears": "All",
+    "editAmountDue": "Edit Amount Due",
+    "amountDueUpdated": "Amount due updated successfully",
+    "defaulterWhatsapp": "Dear Parent, the fee of {{amount}} for {{name}} ({{month}} {{year}}) is still pending. Please clear it at your earliest convenience. Kindly ignore this message if you have already made the payment.",
+    "confirmDeleteStructureTitle": "Delete Fee Structure",
+    "confirmDeleteStructure": "Delete the {{feeType}} fee structure for {{class}}? This cannot be undone.",
+    "structureDeleted": "Fee structure deleted successfully"
   },
   "attendance": {
     "title": "Attendance",
@@ -177,6 +184,7 @@
     "run": "Run Payroll",
     "staff": "Staff",
     "month": "Month",
+    "paymentDate": "Payment Date",
     "year": "Year",
     "gross": "Gross",
     "deductions": "Deductions",

@@ -26,6 +26,7 @@ model Student {
   photoPath      String?
   notes          String? // free-text: occupation, school name, previous studies, etc.
   legacyBillNo   String? // original Google Sheet bill number, preserved for reference
+  feeOverrideAmount Float? // manual override for monthly amount due on the Defaulters page (arrears)
   status         String    @default("active")
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

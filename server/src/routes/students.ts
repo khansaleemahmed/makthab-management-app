@@ -40,17 +40,29 @@ studentsRouter.get(
       ? q.sortBy === "class"
         ? { class: { name: q.sortOrder } }
         : { [q.sortBy]: q.sortOrder }
-      : { id: "desc" as const };
-    const [items, total] = await Promise.all([
+      : { admissionNo: "asc" as const };
+    const [rows, total] = await Promise.all([
       prisma.student.findMany({
         where,
-        include: { class: true, academicYear: true },
+        include: {
+          class: true,
+          academicYear: true,
+          feePayments: {
+            where: { feeType: "admission" },
+            orderBy: { paymentDate: "asc" },
+            take: 1,
+          },
+        },
         orderBy,
         skip: (q.page - 1) * q.limit,
         take: q.limit,
       }),
       prisma.student.count({ where }),
     ]);
+    const items = rows.map(({ feePayments, ...student }) => ({
+      ...student,
+      admissionDate: feePayments[0]?.paymentDate ?? null,
+    }));
     res.json({ data: { items, total, page: q.page, limit: q.limit } });
   })
 );

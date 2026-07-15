@@ -44,6 +44,7 @@ export interface Student {
   academicYearId: number;
   photoPath?: string | null;
   status: string;
+  admissionDate?: string | null;
   class?: Class;
   academicYear?: AcademicYear;
   createdAt?: string;

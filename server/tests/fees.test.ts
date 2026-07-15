@@ -267,6 +267,92 @@ describeApi("fees", () => {
     expect(nos).toEqual(sorted);
   });
 
+  it("GET /fees/defaulters -> paginated envelope {items,total,page,limit}, default admissionNo asc", async () => {
+    const r = await request(app())
+      .get(`${API}/fees/defaulters?month=8&year=2099&limit=200`)
+      .set(bearer(token));
+    expect(r.status).toBe(200);
+    const d = r.body.data;
+    expect(d).toHaveProperty("items");
+    expect(d).toHaveProperty("total");
+    expect(d.page).toBe(1);
+    expect(d.limit).toBe(200);
+    const nos = d.items.map((i: { admissionNo: string }) => i.admissionNo);
+    const sorted = [...nos].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    expect(nos).toEqual(sorted);
+  });
+
+  it("GET /fees/defaulters?limit=1 -> respects page size, total exceeds slice", async () => {
+    const r = await request(app())
+      .get(`${API}/fees/defaulters?month=8&year=2099&limit=1&page=1`)
+      .set(bearer(token));
+    expect(r.status).toBe(200);
+    expect(r.body.data.items.length).toBeLessThanOrEqual(1);
+    expect(r.body.data.limit).toBe(1);
+    expect(r.body.data.total).toBeGreaterThanOrEqual(r.body.data.items.length);
+  });
+
+  it("PATCH /fees/defaulters/:studentId -> override amount due persists & takes precedence", async () => {
+    const r = await request(app())
+      .patch(`${API}/fees/defaulters/${studentId}`)
+      .set(bearer(token))
+      .send({ amountDue: 1234 });
+    expect(r.status).toBe(200);
+    expect(r.body.data.studentId).toBe(studentId);
+    expect(r.body.data.amountDue).toBe(1234);
+    // Persisted override wins over the class fee-structure amount on subsequent reads.
+    const list = await request(app())
+      .get(`${API}/fees/defaulters?month=8&year=2099&limit=200`)
+      .set(bearer(token));
+    const row = list.body.data.items.find((i: { studentId: number }) => i.studentId === studentId);
+    expect(row?.amountDue).toBe(1234);
+  });
+
+  it("PATCH /fees/defaulters/:studentId bad body -> 400 Zod", async () => {
+    const r = await request(app())
+      .patch(`${API}/fees/defaulters/${studentId}`)
+      .set(bearer(token))
+      .send({ amountDue: -5 });
+    expect(r.status).toBe(400);
+  });
+
+  it("PATCH /fees/defaulters/:studentId missing student -> 404", async () => {
+    const r = await request(app())
+      .patch(`${API}/fees/defaulters/99999999`)
+      .set(bearer(token))
+      .send({ amountDue: 100 });
+    expect(r.status).toBe(404);
+  });
+
+  it("DELETE /fees/structures/:id -> removes the structure {data:{id}}", async () => {
+    const created = await request(app())
+      .post(`${API}/fees/structures`)
+      .set(bearer(token))
+      .send({ classId: 1, academicYearId: 1, feeType: "annual", amount: 2000 });
+    const id = created.body.data.id;
+    const del = await request(app()).delete(`${API}/fees/structures/${id}`).set(bearer(token));
+    expect(del.status).toBe(200);
+    expect(del.body.data.id).toBe(id);
+    const list = await request(app()).get(`${API}/fees/structures`).set(bearer(token));
+    expect(list.body.data.some((s: { id: number }) => s.id === id)).toBe(false);
+  });
+
+  it("DELETE /fees/structures/:id missing -> 404", async () => {
+    const r = await request(app()).delete(`${API}/fees/structures/99999999`).set(bearer(token));
+    expect(r.status).toBe(404);
+  });
+
+  it("Teacher role is blocked from defaulters edit + structure delete -> 403", async () => {
+    const teacher = await login(CREDS.teacher.username, CREDS.teacher.password);
+    const patch = await request(app())
+      .patch(`${API}/fees/defaulters/${studentId}`)
+      .set(bearer(teacher))
+      .send({ amountDue: 1 });
+    expect(patch.status).toBe(403);
+    const del = await request(app()).delete(`${API}/fees/structures/1`).set(bearer(teacher));
+    expect(del.status).toBe(403);
+  });
+
   it("Teacher role is blocked from fee write endpoints -> 403 (§6 roles)", async () => {
     const teacher = await login(CREDS.teacher.username, CREDS.teacher.password);
     const post = await request(app()).post(`${API}/fees`).set(bearer(teacher)).send({

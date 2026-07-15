@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
+import { Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CurrencyInput } from '@/components/form/CurrencyInput';
@@ -9,22 +11,29 @@ import { SelectField } from '@/components/form/SelectField';
 import { Spinner } from '@/components/ui/spinner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { LoadingRows, ErrorState, EmptyState } from '@/components/QueryState';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/ui/use-toast';
 import { formatCurrency } from '@/lib/format';
 import { extractApiError } from '@/api/client';
+import { useAuthStore } from '@/store/authStore';
 import { useClasses, useAcademicYears } from '@/api/reference';
 import { feeStructureCreateSchema, type FeeStructureCreateInput } from '@/lib/schemas';
-import { useFeeStructures, useSaveFeeStructure } from './api';
+import { useFeeStructures, useSaveFeeStructure, useDeleteFeeStructure } from './api';
+import type { FeeStructure } from '@/types/domain';
 
 const FEE_TYPES = ['admission', 'monthly', 'annual', 'other'] as const;
 
 export function FeeStructures() {
   const { t, i18n } = useTranslation();
   const { toast } = useToast();
+  const role = useAuthStore((s) => s.user?.role);
+  const canManage = role === 'Admin' || role === 'Accountant';
   const { data: classes = [] } = useClasses();
   const { data: years = [] } = useAcademicYears();
   const { data: structures, isLoading, isError, refetch } = useFeeStructures();
   const save = useSaveFeeStructure();
+  const del = useDeleteFeeStructure();
+  const [deleting, setDeleting] = useState<FeeStructure | null>(null);
 
   const {
     register,
@@ -38,6 +47,17 @@ export function FeeStructures() {
   });
 
   const classNameFor = (id: number) => classes.find((c) => c.id === id)?.name ?? id;
+
+  const confirmDelete = () => {
+    if (!deleting) return;
+    del.mutate(deleting.id, {
+      onSuccess: () => {
+        toast({ title: t('fees.structureDeleted'), variant: 'success' });
+        setDeleting(null);
+      },
+      onError: (err) => toast({ title: extractApiError(err).message, variant: 'destructive' }),
+    });
+  };
 
   const onSubmit = handleSubmit((values) => {
     save.mutate(values, {
@@ -101,6 +121,7 @@ export function FeeStructures() {
                 <TableHead>{t('students.class')}</TableHead>
                 <TableHead>{t('fees.feeType')}</TableHead>
                 <TableHead className="text-end">{t('fees.amountDue')}</TableHead>
+                {canManage && <TableHead className="text-end">{t('common.actions')}</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -109,12 +130,42 @@ export function FeeStructures() {
                   <TableCell className="font-medium">{classNameFor(s.classId)}</TableCell>
                   <TableCell className="capitalize">{s.feeType}</TableCell>
                   <TableCell className="text-end">{formatCurrency(s.amount, i18n.language)}</TableCell>
+                  {canManage && (
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={t('common.delete')}
+                          onClick={() => setDeleting(s)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </CardContent>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+        onConfirm={confirmDelete}
+        title={t('fees.confirmDeleteStructureTitle')}
+        message={t('fees.confirmDeleteStructure', {
+          feeType: deleting?.feeType ?? '',
+          class: deleting ? classNameFor(deleting.classId) : '',
+        })}
+        confirmLabel={t('common.delete')}
+        destructive
+        pending={del.isPending}
+      />
     </Card>
   );
 }

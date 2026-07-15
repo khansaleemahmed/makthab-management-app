@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
 import { Plus, FileText, MessageCircle, Pencil, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
@@ -8,19 +10,38 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { LoadingRows, ErrorState, EmptyState } from '@/components/QueryState';
 import { Pagination, DEFAULT_PAGE_SIZE } from '@/components/Pagination';
 import { SortableTableHead, useSort } from '@/components/SortableTableHead';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { Field } from '@/components/form/Field';
+import { CurrencyInput } from '@/components/form/CurrencyInput';
+import { Spinner } from '@/components/ui/spinner';
 import { useToast } from '@/components/ui/use-toast';
-import { formatCurrency, monthName } from '@/lib/format';
+import { formatCurrency, formatDate, monthName } from '@/lib/format';
 import { extractApiError } from '@/api/client';
 import { openWhatsApp } from '@/lib/download';
 import { useAuthStore } from '@/store/authStore';
-import { useFees, useDefaulters, useDeleteFee, downloadReceipt, sendReceiptWhatsApp } from './api';
+import { defaulterUpdateSchema, type DefaulterUpdateInput } from '@/lib/schemas';
+import {
+  useFees,
+  useDefaulters,
+  useUpdateDefaulter,
+  useDeleteFee,
+  downloadReceipt,
+  sendReceiptWhatsApp,
+} from './api';
 import { FeeForm } from './FeeForm';
 import { FeeStructures } from './FeeStructures';
-import type { FeePayment } from '@/types/domain';
+import type { FeePayment, Defaulter } from '@/types/domain';
 
 const now = new Date();
 
@@ -160,7 +181,7 @@ function PaymentsTable({
           )}
         </div>
         {isLoading ? (
-          <LoadingRows cols={7} />
+          <LoadingRows cols={8} />
         ) : isError ? (
           <ErrorState onRetry={refetch} />
         ) : !data || data.items.length === 0 ? (
@@ -181,6 +202,7 @@ function PaymentsTable({
                 <SortableTableHead sortKey="amountPaid" sort={sort} onSort={onSort} className="text-end">
                   {t('fees.amountPaid')}
                 </SortableTableHead>
+                <TableHead>{t('fees.paymentDate')}</TableHead>
                 <SortableTableHead sortKey="receiptNo" sort={sort} onSort={onSort}>
                   {t('fees.receiptNo')}
                 </SortableTableHead>
@@ -195,6 +217,7 @@ function PaymentsTable({
                   <TableCell>{f.student?.fullName ?? f.studentId}</TableCell>
                   <TableCell className="capitalize">{f.feeType}</TableCell>
                   <TableCell className="text-end">{formatCurrency(f.amountPaid, i18n.language)}</TableCell>
+                  <TableCell>{formatDate(f.paymentDate, i18n.language)}</TableCell>
                   <TableCell>{f.receiptNo}</TableCell>
                   <TableCell>
                     <Badge variant={f.amountPaid >= f.amountDue ? 'success' : 'warning'}>
@@ -291,11 +314,99 @@ function AdmissionTab() {
   );
 }
 
+function DefaulterEditDialog({
+  defaulter,
+  open,
+  onOpenChange,
+}: {
+  defaulter: Defaulter | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const update = useUpdateDefaulter();
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<DefaulterUpdateInput>({
+    resolver: zodResolver(defaulterUpdateSchema),
+  });
+
+  useEffect(() => {
+    if (open && defaulter) reset({ amountDue: defaulter.amountDue });
+  }, [open, defaulter, reset]);
+
+  const onSubmit = handleSubmit((values) => {
+    if (!defaulter) return;
+    update.mutate(
+      { studentId: defaulter.studentId, amountDue: values.amountDue },
+      {
+        onSuccess: () => {
+          toast({ title: t('fees.amountDueUpdated'), variant: 'success' });
+          onOpenChange(false);
+        },
+        onError: (err) => toast({ title: extractApiError(err).message, variant: 'destructive' }),
+      },
+    );
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t('fees.editAmountDue')}</DialogTitle>
+          <DialogDescription>{defaulter?.fullName}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+          <Field label={t('fees.amountDue')} error={errors.amountDue?.message} required>
+            <CurrencyInput step="0.01" autoFocus {...register('amountDue')} />
+          </Field>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={update.isPending}>
+              {update.isPending && <Spinner className="me-2" />}
+              {t('common.save')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function DefaultersTab() {
   const { t, i18n } = useTranslation();
+  const role = useAuthStore((s) => s.user?.role);
+  const canManage = role === 'Admin' || role === 'Accountant';
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const { data, isLoading, isError, refetch } = useDefaulters(month, year);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [editing, setEditing] = useState<Defaulter | null>(null);
+  const { sort, toggle } = useSort({ sortBy: 'admissionNo', sortOrder: 'asc' });
+
+  useEffect(() => {
+    setPage(1);
+  }, [month, year]);
+
+  const { data, isLoading, isError, refetch } = useDefaulters({
+    month,
+    year,
+    page,
+    limit,
+    sortBy: sort.sortBy,
+    sortOrder: sort.sortOrder,
+  });
+
+  const onSort = (key: string) => {
+    toggle(key);
+    setPage(1);
+  };
 
   return (
     <Card>
@@ -305,47 +416,90 @@ function DefaultersTab() {
           <LoadingRows cols={4} />
         ) : isError ? (
           <ErrorState onRetry={refetch} />
-        ) : !data || data.length === 0 ? (
+        ) : !data || data.items.length === 0 ? (
           <EmptyState />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t('students.admissionNo')}</TableHead>
-                <TableHead>{t('students.fullName')}</TableHead>
-                <TableHead className="text-end">{t('fees.amountDue')}</TableHead>
+                <SortableTableHead sortKey="admissionNo" sort={sort} onSort={onSort}>
+                  {t('students.admissionNo')}
+                </SortableTableHead>
+                <SortableTableHead sortKey="fullName" sort={sort} onSort={onSort}>
+                  {t('students.fullName')}
+                </SortableTableHead>
+                <SortableTableHead sortKey="amountDue" sort={sort} onSort={onSort} className="text-end">
+                  {t('fees.amountDue')}
+                </SortableTableHead>
                 <TableHead className="text-end">{t('common.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map((d) => (
+              {data.items.map((d) => (
                 <TableRow key={d.studentId}>
                   <TableCell className="font-medium">{d.admissionNo}</TableCell>
                   <TableCell>{d.fullName}</TableCell>
                   <TableCell className="text-end">{formatCurrency(d.amountDue, i18n.language)}</TableCell>
-                  <TableCell className="text-end">
-                    {d.whatsappNo && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title={t('fees.whatsapp')}
-                        onClick={() =>
-                          openWhatsApp(
-                            d.whatsappNo!,
-                            `Dear parent, fee of ${d.amountDue} for ${d.fullName} (${monthName(month)} ${year}) is pending.`,
-                          )
-                        }
-                      >
-                        <MessageCircle className="h-4 w-4 text-emerald-600" />
-                      </Button>
-                    )}
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      {d.whatsappNo && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={t('fees.whatsapp')}
+                          onClick={() =>
+                            openWhatsApp(
+                              d.whatsappNo!,
+                              t('fees.defaulterWhatsapp', {
+                                amount: formatCurrency(d.amountDue, i18n.language),
+                                name: d.fullName,
+                                month: monthName(month),
+                                year,
+                              }),
+                            )
+                          }
+                        >
+                          <MessageCircle className="h-4 w-4 text-emerald-600" />
+                        </Button>
+                      )}
+                      {canManage && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={t('common.edit')}
+                          onClick={() => setEditing(d)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
+        {data && data.total > 0 && (
+          <Pagination
+            page={page}
+            limit={limit}
+            total={data.total}
+            onPageChange={setPage}
+            onLimitChange={(l) => {
+              setLimit(l);
+              setPage(1);
+            }}
+          />
+        )}
       </CardContent>
+
+      <DefaulterEditDialog
+        defaulter={editing}
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      />
     </Card>
   );
 }

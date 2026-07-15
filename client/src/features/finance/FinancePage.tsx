@@ -221,6 +221,9 @@ function ExpensesTab() {
                 <SortableTableHead sortKey="voucherNo" sort={sort} onSort={onSort}>
                   {t('expenses.voucherNo')}
                 </SortableTableHead>
+                <SortableTableHead sortKey="expenseDate" sort={sort} onSort={onSort}>
+                  {t('expenses.date')}
+                </SortableTableHead>
                 <SortableTableHead sortKey="category" sort={sort} onSort={onSort}>
                   {t('expenses.category')}
                 </SortableTableHead>
@@ -236,9 +239,6 @@ function ExpensesTab() {
                 <SortableTableHead sortKey="amount" sort={sort} onSort={onSort} className="text-end">
                   {t('expenses.amount')}
                 </SortableTableHead>
-                <SortableTableHead sortKey="expenseDate" sort={sort} onSort={onSort}>
-                  {t('expenses.date')}
-                </SortableTableHead>
                 {canManage && <TableHead className="text-end">{t('common.actions')}</TableHead>}
               </TableRow>
             </TableHeader>
@@ -246,6 +246,7 @@ function ExpensesTab() {
               {data.items.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell className="font-medium">{e.voucherNo}</TableCell>
+                  <TableCell>{formatDate(e.expenseDate, i18n.language)}</TableCell>
                   <TableCell>{e.category?.name ?? e.categoryId}</TableCell>
                   <TableCell>{e.payee}</TableCell>
                   <TableCell className="text-end">
@@ -253,7 +254,6 @@ function ExpensesTab() {
                   </TableCell>
                   <TableCell className="text-end">{e.quantity ?? '—'}</TableCell>
                   <TableCell className="text-end">{formatCurrency(e.amount, i18n.language)}</TableCell>
-                  <TableCell>{formatDate(e.expenseDate, i18n.language)}</TableCell>
                   {canManage && (
                     <TableCell>
                       <div className="flex justify-end gap-1">
@@ -498,7 +498,7 @@ function SalariesTab() {
         </form>
 
         {isLoading ? (
-          <LoadingRows cols={5} />
+          <LoadingRows cols={6} />
         ) : isError ? (
           <ErrorState onRetry={refetch} />
         ) : !data || data.items.length === 0 ? (
@@ -513,6 +513,7 @@ function SalariesTab() {
                 <SortableTableHead sortKey="salaryMonth" sort={sort} onSort={onSort}>
                   {t('salaries.month')}
                 </SortableTableHead>
+                <TableHead>{t('salaries.paymentDate')}</TableHead>
                 <SortableTableHead sortKey="grossAmount" sort={sort} onSort={onSort} className="text-end">
                   {t('salaries.gross')}
                 </SortableTableHead>
@@ -529,6 +530,7 @@ function SalariesTab() {
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">{p.staff?.fullName ?? p.staffId}</TableCell>
                   <TableCell>{monthName(p.salaryMonth)} {p.salaryYear}</TableCell>
+                  <TableCell>{formatDate(p.paymentDate, i18n.language)}</TableCell>
                   <TableCell className="text-end">{formatCurrency(p.grossAmount, i18n.language)}</TableCell>
                   <TableCell className="text-end">{formatCurrency(p.deductions, i18n.language)}</TableCell>
                   <TableCell className="text-end">{formatCurrency(p.netAmount, i18n.language)}</TableCell>

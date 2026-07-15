@@ -75,6 +75,7 @@
     "title": "الطلاب",
     "admit": "قبول طالب",
     "admissionNo": "رقم القبول",
+    "admissionDate": "تاريخ القبول",
     "fullName": "الاسم الكامل",
     "fatherName": "اسم الأب",
     "dateOfBirth": "تاريخ الميلاد",
@@ -130,7 +131,13 @@
     "confirmDelete": "حذف الإيصال {{receipt}} للطالب {{name}}؟ لا يمكن التراجع عن هذا.",
     "monthly": "شهري",
     "admission": "القبول",
-    "allYears": "الكل"
+    "allYears": "الكل",
+    "editAmountDue": "تعديل المبلغ المستحق",
+    "amountDueUpdated": "تم تحديث المبلغ المستحق بنجاح",
+    "defaulterWhatsapp": "عزيزي ولي الأمر، لا يزال المبلغ المستحق {{amount}} للطالب {{name}} ({{month}} {{year}}) غير مدفوع. يرجى تسديده في أقرب وقت ممكن. نرجو تجاهل هذه الرسالة إذا كنت قد سددت الدفعة بالفعل.",
+    "confirmDeleteStructureTitle": "حذف هيكل الرسوم",
+    "confirmDeleteStructure": "حذف هيكل رسوم {{feeType}} للصف {{class}}؟ لا يمكن التراجع عن هذا.",
+    "structureDeleted": "تم حذف هيكل الرسوم بنجاح"
   },
   "attendance": {
     "title": "الحضور",
@@ -177,6 +184,7 @@
     "run": "تشغيل الرواتب",
     "staff": "الموظف",
     "month": "الشهر",
+    "paymentDate": "تاريخ الدفع",
     "year": "السنة",
     "gross": "الإجمالي",
     "deductions": "الخصومات",

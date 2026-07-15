@@ -44,11 +44,29 @@ export const feeListQuery = z.object({
 export type FeeListQuery = z.infer<typeof feeListQuery>;
 
 // GET /fees/defaulters query params
+export const defaulterSortField = z.enum([
+  "admissionNo",
+  "fullName",
+  "amountDue",
+  "className",
+]);
+export type DefaulterSortField = z.infer<typeof defaulterSortField>;
+
 export const defaultersQuery = z.object({
   month: z.coerce.number().int().min(1).max(12),
   year: z.coerce.number().int(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(200).default(50),
+  sortBy: defaulterSortField.default("admissionNo"),
+  sortOrder: sortOrderSchema.default("asc"),
 });
 export type DefaultersQuery = z.infer<typeof defaultersQuery>;
+
+// PATCH /fees/defaulters/:studentId — override the computed amount due (arrears).
+export const defaulterUpdateSchema = z.object({
+  amountDue: z.number().nonnegative(),
+});
+export type DefaulterUpdateDto = z.infer<typeof defaulterUpdateSchema>;
 
 // Fee structure — POST /fees/structures
 export const feeStructureCreateSchema = z.object({

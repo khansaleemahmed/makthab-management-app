@@ -59,11 +59,59 @@ describeApi("students", () => {
     expect(names).toEqual(sorted);
   });
 
+  it("GET /students with no sortBy -> defaults to admissionNo ascending", async () => {
+    const r = await request(app())
+      .get(`${API}/students?limit=200&page=1`)
+      .set(bearer(adminToken));
+    expect(r.status).toBe(200);
+    const nos = r.body.data.items.map((s: { admissionNo: string }) => s.admissionNo);
+    const sorted = [...nos].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    expect(nos).toEqual(sorted);
+  });
+
   it("GET /students?limit=1 -> respects page size", async () => {
     const r = await request(app()).get(`${API}/students?limit=1&page=1`).set(bearer(adminToken));
     expect(r.status).toBe(200);
     expect(r.body.data.items.length).toBeLessThanOrEqual(1);
     expect(r.body.data.limit).toBe(1);
+  });
+
+  it("GET /students -> admissionDate is the earliest admission FeePayment date, else null", async () => {
+    // Student with an admission payment: admissionDate reflects its paymentDate.
+    const admNo = `QA-ADM-${Date.now()}`;
+    const created = await request(app())
+      .post(`${API}/students`)
+      .set(bearer(adminToken))
+      .send({ ...validStudent, admissionNo: admNo });
+    const withAdmissionId = created.body.data.id;
+    await request(app()).post(`${API}/fees`).set(bearer(adminToken)).send({
+      studentId: withAdmissionId,
+      feeType: "admission",
+      feeYear: 2026,
+      amountDue: 1000,
+      amountPaid: 1000,
+      paymentDate: "2026-05-20",
+      paymentMethod: "cash",
+    });
+
+    // Student with no admission payment: admissionDate is null.
+    const noAdmNo = `QA-NOADM-${Date.now()}`;
+    const createdNoAdm = await request(app())
+      .post(`${API}/students`)
+      .set(bearer(adminToken))
+      .send({ ...validStudent, admissionNo: noAdmNo });
+    const noAdmissionId = createdNoAdm.body.data.id;
+
+    const r = await request(app()).get(`${API}/students?limit=200&page=1`).set(bearer(adminToken));
+    expect(r.status).toBe(200);
+    const items = r.body.data.items as Array<{ id: number; admissionDate: string | null }>;
+    const withRow = items.find((s) => s.id === withAdmissionId);
+    const withoutRow = items.find((s) => s.id === noAdmissionId);
+    expect(withRow?.admissionDate).not.toBeNull();
+    expect(new Date(withRow!.admissionDate!).toISOString()).toBe(
+      new Date("2026-05-20").toISOString()
+    );
+    expect(withoutRow).toHaveProperty("admissionDate", null);
   });
 
   it("GET /students/:id -> profile + fee summary + attendance stats", async () => {

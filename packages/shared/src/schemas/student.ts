@@ -69,4 +69,5 @@ export type StudentDto = {
   status: string;
   createdAt: string;
   updatedAt: string;
+  admissionDate: string | null;
 };

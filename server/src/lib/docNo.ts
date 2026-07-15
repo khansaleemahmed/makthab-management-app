@@ -8,8 +8,19 @@ function stamp(d = new Date()): string {
 }
 
 export async function nextReceiptNo(): Promise<string> {
-  const n = await prisma.feePayment.count();
-  return `RC-${stamp()}-${String(n + 1).padStart(4, "0")}`;
+  // Derive from the max existing suffix for this month, not count(): payments
+  // can be hard-deleted, so count()+1 could collide with a surviving receiptNo
+  // (@unique). Same fix as nextVoucherNo below.
+  const prefix = `RC-${stamp()}-`;
+  const rows = await prisma.feePayment.findMany({
+    where: { receiptNo: { startsWith: prefix } },
+    select: { receiptNo: true },
+  });
+  const maxSeq = rows.reduce((m, r) => {
+    const seq = Number(r.receiptNo.slice(prefix.length));
+    return Number.isFinite(seq) && seq > m ? seq : m;
+  }, 0);
+  return `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
 }
 
 export async function nextVoucherNo(): Promise<string> {

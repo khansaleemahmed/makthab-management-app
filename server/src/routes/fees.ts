@@ -6,6 +6,7 @@ import {
   feePaymentUpdateSchema,
   feeListQuery,
   defaultersQuery,
+  defaulterUpdateSchema,
   feeStructureCreateSchema,
   type FeeListQuery,
   type DefaultersQuery,
@@ -88,12 +89,27 @@ feesRouter.post(
   })
 );
 
-// GET /fees/defaulters — active students with no monthly payment for month/year.
+// A defaulter row: a student's outstanding monthly amount, where amountDue is
+// the manual override (arrears) if set, else the class/year fee-structure amount.
+type StudentWithClass = { id: number; fullName: string; admissionNo: string; classId: number; academicYearId: number; whatsappNo: string; feeOverrideAmount: number | null; class: { name: string } | null };
+function defaulterRow(s: StudentWithClass, structAmount: number) {
+  return {
+    studentId: s.id,
+    fullName: s.fullName,
+    admissionNo: s.admissionNo,
+    className: s.class?.name,
+    amountDue: s.feeOverrideAmount ?? structAmount,
+    whatsappNo: s.whatsappNo,
+  };
+}
+
+// GET /fees/defaulters — active students with no monthly payment for month/year,
+// sorted + paginated server-side (default admissionNo asc).
 feesRouter.get(
   "/defaulters",
   validateQuery(defaultersQuery),
   asyncHandler(async (_req, res) => {
-    const { month, year } = res.locals.query as DefaultersQuery;
+    const { month, year, page, limit, sortBy, sortOrder } = res.locals.query as DefaultersQuery;
     const students = await prisma.student.findMany({
       where: { status: "active" },
       include: { class: true },
@@ -107,17 +123,43 @@ feesRouter.get(
     const structFor = (classId: number, yearId: number) =>
       structures.find((s) => s.classId === classId && s.academicYearId === yearId)?.amount ?? 0;
 
-    const defaulters = students
+    const rows = students
       .filter((s) => !paidSet.has(s.id))
-      .map((s) => ({
-        studentId: s.id,
-        fullName: s.fullName,
-        admissionNo: s.admissionNo,
-        className: s.class?.name,
-        amountDue: structFor(s.classId, s.academicYearId),
-        whatsappNo: s.whatsappNo,
-      }));
-    res.json({ data: defaulters });
+      .map((s) => defaulterRow(s, structFor(s.classId, s.academicYearId)));
+
+    const dir = sortOrder === "desc" ? -1 : 1;
+    rows.sort((a, b) => {
+      if (sortBy === "amountDue") return (a.amountDue - b.amountDue) * dir;
+      const av = String(a[sortBy] ?? "");
+      const bv = String(b[sortBy] ?? "");
+      return av.localeCompare(bv, undefined, { numeric: true }) * dir;
+    });
+
+    const total = rows.length;
+    const skip = (page - 1) * limit;
+    const items = rows.slice(skip, skip + limit);
+    res.json({ data: { items, total, page, limit } });
+  })
+);
+
+// PATCH /fees/defaulters/:studentId — override a student's amount due (arrears)
+// by persisting feeOverrideAmount; returns the recomputed defaulter row.
+feesRouter.patch(
+  "/defaulters/:studentId",
+  validateBody(defaulterUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const studentId = Number(req.params.studentId);
+    const existing = await prisma.student.findUnique({ where: { id: studentId } });
+    if (!existing) throw new AppError(404, "not_found", "Student not found");
+
+    const dto = req.body as typeof defaulterUpdateSchema._output;
+    const student = await prisma.student.update({
+      where: { id: studentId },
+      data: { feeOverrideAmount: dto.amountDue },
+      include: { class: true },
+    });
+    // The override takes precedence, so the row's amountDue echoes what was set.
+    res.json({ data: defaulterRow(student, 0) });
   })
 );
 
@@ -153,6 +195,18 @@ feesRouter.post(
   })
 );
 
+// DELETE /fees/structures/:id — remove a fee structure entry (Admin + Accountant).
+feesRouter.delete(
+  "/structures/:id",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await prisma.feeStructure.findUnique({ where: { id } });
+    if (!existing) throw new AppError(404, "not_found", "Fee structure not found");
+    await prisma.feeStructure.delete({ where: { id } });
+    res.json({ data: { id } });
+  })
+);
+
 // GET /fees — list with student_id / month / year / status filters.
 feesRouter.get(
   "/",
@@ -170,7 +224,7 @@ feesRouter.get(
         : q.sortBy === "admissionNo"
         ? { student: { admissionNo: q.sortOrder } }
         : { [q.sortBy]: q.sortOrder }
-      : { id: "desc" as const };
+      : { student: { admissionNo: "asc" as const } };
     const skip = (q.page - 1) * q.limit;
     // paid/unpaid compares two columns (amountPaid vs amountDue), which Prisma
     // can't express in `where`, so when it's active we fetch the full filtered

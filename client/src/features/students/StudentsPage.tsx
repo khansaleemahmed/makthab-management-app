@@ -22,6 +22,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useClasses } from '@/api/reference';
 import { useUiStore } from '@/store/uiStore';
 import { useDebounce } from '@/lib/useDebounce';
+import { formatDate } from '@/lib/format';
 import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { useStudents, useDeleteStudent, downloadAdmissionLetter } from './api';
@@ -30,7 +31,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type { Student } from '@/types/domain';
 
 export function StudentsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
@@ -162,7 +163,7 @@ export function StudentsPage() {
           </div>
 
           {isLoading ? (
-            <LoadingRows cols={6} />
+            <LoadingRows cols={8} />
           ) : isError ? (
             <ErrorState onRetry={refetch} />
           ) : !data || data.items.length === 0 ? (
@@ -174,12 +175,14 @@ export function StudentsPage() {
                   <SortableTableHead sortKey="admissionNo" sort={sort} onSort={onSort}>
                     {t('students.admissionNo')}
                   </SortableTableHead>
+                  <TableHead>{t('students.admissionDate')}</TableHead>
                   <SortableTableHead sortKey="fullName" sort={sort} onSort={onSort}>
                     {t('students.fullName')}
                   </SortableTableHead>
                   <SortableTableHead sortKey="fatherName" sort={sort} onSort={onSort}>
                     {t('students.fatherName')}
                   </SortableTableHead>
+                  <TableHead>{t('students.contactNo')}</TableHead>
                   <SortableTableHead sortKey="class" sort={sort} onSort={onSort}>
                     {t('students.class')}
                   </SortableTableHead>
@@ -193,8 +196,10 @@ export function StudentsPage() {
                 {data.items.map((s) => (
                   <TableRow key={s.id}>
                     <TableCell className="font-medium">{s.admissionNo}</TableCell>
+                    <TableCell>{s.admissionDate ? formatDate(s.admissionDate, i18n.language) : '—'}</TableCell>
                     <TableCell>{s.fullName}</TableCell>
                     <TableCell>{s.fatherName}</TableCell>
+                    <TableCell>{s.contactNo ?? '—'}</TableCell>
                     <TableCell>{s.class?.name ?? s.classId}</TableCell>
                     <TableCell>
                       <Badge variant={s.status === 'active' ? 'success' : 'secondary'}>

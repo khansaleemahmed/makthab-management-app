@@ -76,11 +76,37 @@ export function useDeleteFee() {
   });
 }
 
-export function useDefaulters(month: number, year: number) {
+export interface DefaultersParams {
+  month: number;
+  year: number;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+export function useDefaulters(params: DefaultersParams) {
   return useQuery({
-    queryKey: ['fees', 'defaulters', month, year],
-    queryFn: async () =>
-      toArray<Defaulter>(unwrap((await api.get('/fees/defaulters', { params: { month, year } })).data)),
+    queryKey: ['fees', 'defaulters', params],
+    queryFn: async () => {
+      const payload = unwrap((await api.get('/fees/defaulters', { params })).data) as {
+        items?: Defaulter[];
+        total?: number;
+      };
+      return {
+        items: payload.items ?? [],
+        total: payload.total ?? payload.items?.length ?? 0,
+      };
+    },
+  });
+}
+
+export function useUpdateDefaulter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ studentId, amountDue }: { studentId: number; amountDue: number }) =>
+      unwrap<Defaulter>((await api.patch(`/fees/defaulters/${studentId}`, { amountDue })).data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['fees', 'defaulters'] }),
   });
 }
 
@@ -96,6 +122,14 @@ export function useSaveFeeStructure() {
   return useMutation({
     mutationFn: async (input: FeeStructureCreateInput) =>
       unwrap<FeeStructure>((await api.post('/fees/structures', input)).data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['fees', 'structures'] }),
+  });
+}
+
+export function useDeleteFeeStructure() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => (await api.delete(`/fees/structures/${id}`)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['fees', 'structures'] }),
   });
 }
