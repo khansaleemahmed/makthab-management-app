@@ -208,12 +208,28 @@
   "reports": {
     "title": "Reports",
     "feeCollection": "Fee Collection",
+    "monthlyFees": "Monthly Fees",
+    "admissionFees": "Admission Fees",
+    "expense": "Expense",
+    "salaries": "Salaries",
     "defaulters": "Defaulters",
     "attendance": "Attendance Summary",
     "expenses": "Expense Breakdown",
     "salaryRegister": "Salary Register",
     "financialSummary": "Financial Summary",
     "generate": "Generate",
-    "period": "Period"
+    "period": "Period",
+    "viewYear": "Year",
+    "viewYearMonth": "Year Month",
+    "viewAll": "All",
+    "month": "Month",
+    "year": "Year",
+    "payments": "Payments",
+    "totalPaid": "Total Paid",
+    "totalNet": "Total Net",
+    "lineItem": "Line Item",
+    "monthlyFee": "Monthly Fee",
+    "admissionFee": "Admission Fee",
+    "netBalance": "Net Balance"
   }
 }

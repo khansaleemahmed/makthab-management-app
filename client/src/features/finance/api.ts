@@ -15,7 +15,12 @@ export interface ListParams {
 }
 
 // ---- Expenses ---------------------------------------------------------------
-export function useExpenses(params: ListParams = {}) {
+export interface ExpenseListParams extends ListParams {
+  date_from?: string;
+  date_to?: string;
+}
+
+export function useExpenses(params: ExpenseListParams = {}) {
   return useQuery({
     queryKey: ['expenses', params],
     queryFn: async () => {

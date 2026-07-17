@@ -71,6 +71,14 @@ function truncate(s: string, maxChars: number): string {
   return a.length <= maxChars ? a : a.slice(0, Math.max(0, maxChars - 1)) + "…".replace("…", "~");
 }
 
+// Rough width of an ASCII string in points for a given Helvetica size. Uses the
+// same ~0.6em-per-char assumption the table truncation budget relies on (a
+// deliberate slight over-estimate so text stays inside its box).
+const CHAR_WIDTH_EM = 0.6;
+function estTextWidth(s: string, size: number, _bold = false): number {
+  return toAscii(s).length * size * CHAR_WIDTH_EM;
+}
+
 // Lay a PdfDoc out into a list of pages, each a list of draw commands.
 function layout(doc: PdfDoc): Cmd[][] {
   const pages: Cmd[][] = [[]];
@@ -91,8 +99,17 @@ function layout(doc: PdfDoc): Cmd[][] {
     pages[page].push({ x, y, size, bold, text });
   };
 
-  push(doc.title, 18, true);
-  if (doc.subtitle) push(doc.subtitle, 11, false);
+  // Title and subtitle render as ONE line ("Title - Subtitle"), matching the
+  // XLSX writer's single-heading convention. An ASCII hyphen is used (not the
+  // XLSX em-dash) because PDF text is ASCII-only — toAscii would turn "—" into
+  // "?". Shrink from 16pt until it fits the content width so long combos
+  // (e.g. "Attendance Report - 7/2026 - class 5") don't overflow.
+  const heading = doc.subtitle ? `${doc.title} - ${doc.subtitle}` : doc.title;
+  let headingSize = 16;
+  while (headingSize > 9 && estTextWidth(heading, headingSize, true) > CONTENT_W) {
+    headingSize -= 1;
+  }
+  push(heading, headingSize, true);
   y -= 6;
 
   for (const line of doc.lines ?? []) {
@@ -110,29 +127,58 @@ function layout(doc: PdfDoc): Cmd[][] {
     y -= 8;
     const { headers, rows, currencyCols = [], totalsRow = false } = doc.table;
     const cols = headers.length;
-    const colW = CONTENT_W / cols;
-    const maxChars = Math.max(4, Math.floor(colW / 6));
     const fmt = (v: string | number, i: number) =>
       currencyCols.includes(i) && typeof v === "number" ? formatCurrency(v) : String(v);
+
+    // Build the totals row up front so its (potentially widest) cells are
+    // included when sizing columns.
+    const totals: Array<string | number> | null =
+      totalsRow && currencyCols.length > 0
+        ? headers.map((_, i) =>
+            currencyCols.includes(i)
+              ? rows.reduce((sum, r) => sum + (Number(r[i]) || 0), 0)
+              : i === 0
+                ? "Total"
+                : ""
+          )
+        : null;
+    const allRows = totals ? [...rows, totals] : rows;
+
+    // Content-aware column widths: weight each column by its longest formatted
+    // string (header + every row), clamped, so wide values (Receipt/Student/
+    // Payee) get proportionally more room than short numeric columns instead of
+    // an equal split that truncates them.
+    const MIN_WEIGHT = 5;
+    const MAX_WEIGHT = 34;
+    const weights = headers.map((h, i) => {
+      let longest = toAscii(String(h)).length;
+      for (const row of allRows) {
+        const len = toAscii(fmt(row[i], i)).length;
+        if (len > longest) longest = len;
+      }
+      return Math.min(MAX_WEIGHT, Math.max(MIN_WEIGHT, longest));
+    });
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+    const colWidths = weights.map((w) => (w / weightSum) * CONTENT_W);
+    const colX: number[] = [];
+    let acc = MARGIN_X;
+    for (let i = 0; i < cols; i++) {
+      colX.push(acc);
+      acc += colWidths[i];
+    }
+    // Per-column character budget from its own allocated width (10pt cells).
+    const colMaxChars = colWidths.map((w) => Math.max(4, Math.floor(w / 6)));
+
     const drawRow = (cells: Array<string | number>, bold: boolean) => {
       if (y - 16 < MARGIN_BOTTOM) newPage();
       cells.forEach((c, i) => {
-        cellAt(truncate(fmt(c, i), maxChars), 10, bold, MARGIN_X + i * colW);
+        cellAt(truncate(fmt(c, i), colMaxChars[i]), 10, bold, colX[i]);
       });
       y -= 16;
     };
     drawRow(headers, true);
     for (const row of rows) drawRow(row, false);
-    if (totalsRow && currencyCols.length > 0) {
-      const totals: Array<string | number> = headers.map((_, i) =>
-        currencyCols.includes(i)
-          ? rows.reduce((sum, r) => sum + (Number(r[i]) || 0), 0)
-          : i === 0
-            ? "Total"
-            : ""
-      );
-      drawRow(totals, true);
-    }
+    if (totals) drawRow(totals, true);
   }
 
   if (doc.footer) {

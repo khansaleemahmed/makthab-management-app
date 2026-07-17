@@ -208,12 +208,28 @@
   "reports": {
     "title": "التقارير",
     "feeCollection": "تحصيل الرسوم",
+    "monthlyFees": "الرسوم الشهرية",
+    "admissionFees": "رسوم التسجيل",
+    "expense": "المصروفات",
+    "salaries": "الرواتب",
     "defaulters": "المتأخرون",
     "attendance": "ملخص الحضور",
     "expenses": "تفصيل المصروفات",
     "salaryRegister": "سجل الرواتب",
     "financialSummary": "الملخص المالي",
     "generate": "إنشاء",
-    "period": "الفترة"
+    "period": "الفترة",
+    "viewYear": "السنة",
+    "viewYearMonth": "السنة والشهر",
+    "viewAll": "الكل",
+    "month": "الشهر",
+    "year": "السنة",
+    "payments": "الدفعات",
+    "totalPaid": "إجمالي المدفوع",
+    "totalNet": "إجمالي الصافي",
+    "lineItem": "البند",
+    "monthlyFee": "رسوم شهرية",
+    "admissionFee": "رسوم التسجيل",
+    "netBalance": "الرصيد الصافي"
   }
 }
