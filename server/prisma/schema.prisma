@@ -192,3 +192,15 @@ model FeeStructure {
 
   @@unique([classId, academicYearId, feeType])
 }
+
+// Institution letterhead (name + address) printed as the header on every
+// generated PDF/XLSX report. Single-row table by convention (id: 1) while the
+// app is single-tenant; the seam for future multi-tenancy — add a tenantId
+// FK here (or make this row the tenant record itself) and scope the lookup
+// by req.tenantId instead of "the one row".
+model OrgProfile {
+  id        Int      @id @default(autoincrement())
+  name      String
+  address   String
+  updatedAt DateTime @updatedAt
+}

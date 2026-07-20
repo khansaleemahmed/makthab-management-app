@@ -12,6 +12,8 @@
  */
 
 export interface PdfDoc {
+  /** Institution letterhead (name + address), centered above the title. */
+  org?: { name: string; address: string };
   title: string;
   subtitle?: string;
   /** Key/value lines (receipts) or plain strings (notes). */
@@ -36,12 +38,27 @@ const MARGIN_TOP = 800;
 const MARGIN_BOTTOM = 60;
 const CONTENT_W = PAGE_W - MARGIN_X * 2;
 
+type Rgb = [number, number, number];
+
 interface Cmd {
   x: number;
   y: number;
   size: number;
   bold: boolean;
   text: string;
+  color: Rgb;
+}
+
+const BLACK: Rgb = [0, 0, 0];
+// Letterhead palette — a muted navy/blue pair reads as "official" without the
+// harsh contrast of pure black on a document meant to be skimmed.
+const ORG_NAME_COLOR: Rgb = hexRgb("#1F4E79");
+const ORG_ADDRESS_COLOR: Rgb = hexRgb("#595959");
+const TITLE_COLOR: Rgb = hexRgb("#2E75B6");
+
+function hexRgb(hex: string): Rgb {
+  const n = parseInt(hex.slice(1), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
 // Standard-14 Helvetica supports ASCII cleanly; drop anything outside that
@@ -90,26 +107,66 @@ function layout(doc: PdfDoc): Cmd[][] {
     page += 1;
     y = MARGIN_TOP;
   };
-  const push = (text: string, size: number, bold: boolean, x = MARGIN_X, advance = size + 7) => {
+  const push = (
+    text: string,
+    size: number,
+    bold: boolean,
+    x = MARGIN_X,
+    advance = size + 7,
+    color: Rgb = BLACK
+  ) => {
     if (y - advance < MARGIN_BOTTOM) newPage();
-    pages[page].push({ x, y, size, bold, text });
+    pages[page].push({ x, y, size, bold, text, color });
     y -= advance;
   };
-  const cellAt = (text: string, size: number, bold: boolean, x: number) => {
-    pages[page].push({ x, y, size, bold, text });
+  const cellAt = (text: string, size: number, bold: boolean, x: number, color: Rgb = BLACK) => {
+    pages[page].push({ x, y, size, bold, text, color });
   };
+  const center = (text: string, size: number, bold: boolean) => {
+    const w = estTextWidth(text, size, bold);
+    return MARGIN_X + Math.max(0, (CONTENT_W - w) / 2);
+  };
+  // Roughly one text line at the body-copy size — used to space the
+  // letterhead from the report title by a couple of blank lines.
+  const LINE_HEIGHT = 14;
+
+  // Institution letterhead: name (bold, navy) then address (grey), both
+  // centered above the report title.
+  if (doc.org) {
+    const NAME_SIZE = 14;
+    const ADDR_SIZE = 10;
+    cellAt(doc.org.name, NAME_SIZE, true, center(doc.org.name, NAME_SIZE, true), ORG_NAME_COLOR);
+    y -= NAME_SIZE + 4;
+    if (doc.org.address) {
+      if (y - (ADDR_SIZE + 4) < MARGIN_BOTTOM) newPage();
+      cellAt(
+        doc.org.address,
+        ADDR_SIZE,
+        false,
+        center(doc.org.address, ADDR_SIZE, false),
+        ORG_ADDRESS_COLOR
+      );
+      y -= ADDR_SIZE + 4;
+    }
+    // Two blank lines between the letterhead and the report title.
+    if (y - LINE_HEIGHT * 2 < MARGIN_BOTTOM) newPage();
+    y -= LINE_HEIGHT * 2;
+  }
 
   // Title and subtitle render as ONE line ("Title - Subtitle"), matching the
   // XLSX writer's single-heading convention. An ASCII hyphen is used (not the
   // XLSX em-dash) because PDF text is ASCII-only — toAscii would turn "—" into
-  // "?". Shrink from 16pt until it fits the content width so long combos
-  // (e.g. "Attendance Report - 7/2026 - class 5") don't overflow.
+  // "?". Shrink from 13pt (deliberately smaller than the 14pt org name above,
+  // so the letterhead reads as the primary heading) until it fits the
+  // content width so long combos (e.g. "Attendance Report - 7/2026 - class
+  // 5") don't overflow. Centered, and coloured a lighter blue than the org
+  // name to keep the visual hierarchy without resorting to plain black.
   const heading = doc.subtitle ? `${doc.title} - ${doc.subtitle}` : doc.title;
-  let headingSize = 16;
-  while (headingSize > 9 && estTextWidth(heading, headingSize, true) > CONTENT_W) {
+  let headingSize = 13;
+  while (headingSize > 8 && estTextWidth(heading, headingSize, true) > CONTENT_W) {
     headingSize -= 1;
   }
-  push(heading, headingSize, true);
+  push(heading, headingSize, true, center(heading, headingSize, true), headingSize + 7, TITLE_COLOR);
   y -= 6;
 
   for (const line of doc.lines ?? []) {
@@ -182,7 +239,7 @@ function layout(doc: PdfDoc): Cmd[][] {
   }
 
   if (doc.footer) {
-    pages[page].push({ x: MARGIN_X, y: 40, size: 9, bold: false, text: doc.footer });
+    pages[page].push({ x: MARGIN_X, y: 40, size: 9, bold: false, text: doc.footer, color: BLACK });
   }
 
   return pages;
@@ -190,10 +247,11 @@ function layout(doc: PdfDoc): Cmd[][] {
 
 function contentStream(cmds: Cmd[]): string {
   return cmds
-    .map(
-      (c) =>
-        `BT /${c.bold ? "F2" : "F1"} ${c.size} Tf ${c.x} ${c.y} Td (${esc(c.text)}) Tj ET`
-    )
+    .map((c) => {
+      const [r, g, b] = c.color;
+      const rg = `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} rg`;
+      return `${rg}\nBT /${c.bold ? "F2" : "F1"} ${c.size} Tf ${c.x} ${c.y} Td (${esc(c.text)}) Tj ET`;
+    })
     .join("\n");
 }
 

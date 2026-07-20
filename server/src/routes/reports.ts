@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { validateQuery } from "../middleware/validate";
 import { renderPdf } from "../lib/pdf";
 import { renderXlsx, XLSX_CONTENT_TYPE } from "../lib/excel";
+import { getOrgHeader } from "../lib/orgProfile";
 import {
   feeCollectionSummaryQuery,
   salaryRegisterSummaryQuery,
@@ -210,9 +211,11 @@ async function send(
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
+  const org = await getOrgHeader();
   if (wantXlsx) {
     const buf = await renderXlsx({
       sheetName: d.title.slice(0, 31),
+      org,
       title: d.subtitle ? `${d.title} — ${d.subtitle}` : d.title,
       headers: d.headers,
       rows: d.rows,
@@ -225,6 +228,7 @@ async function send(
     return;
   }
   const pdf = renderPdf({
+    org,
     title: d.title,
     subtitle: d.subtitle,
     lines: d.summaryLines,

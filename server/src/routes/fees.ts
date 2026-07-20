@@ -19,6 +19,7 @@ import { AppError } from "../middleware/errorHandler";
 import { actorStaffId } from "../lib/actor";
 import { nextReceiptNo } from "../lib/docNo";
 import { renderPdf } from "../lib/pdf";
+import { getOrgHeader } from "../lib/orgProfile";
 import { buildWhatsAppLink } from "../lib/whatsapp";
 import { RECEIPTS_DIR, ensureDir } from "../lib/paths";
 
@@ -31,8 +32,9 @@ async function loadFee(id: number) {
   return prisma.feePayment.findUnique({ where: { id }, include: { student: true } });
 }
 
-function receiptPdf(fee: NonNullable<FeeWithStudent>): Buffer {
+async function receiptPdf(fee: NonNullable<FeeWithStudent>): Promise<Buffer> {
   return renderPdf({
+    org: await getOrgHeader(),
     title: "Fee Receipt",
     subtitle: `Receipt No: ${fee.receiptNo}`,
     lines: [
@@ -78,7 +80,7 @@ feesRouter.post(
     });
 
     const pdfPath = path.join(ensureDir(RECEIPTS_DIR), `${receiptNo}.pdf`);
-    fs.writeFileSync(pdfPath, receiptPdf(created));
+    fs.writeFileSync(pdfPath, await receiptPdf(created));
     const fee = await prisma.feePayment.update({
       where: { id: created.id },
       data: { pdfPath },
@@ -337,7 +339,7 @@ feesRouter.get(
     const fee = await loadFee(Number(req.params.id));
     if (!fee) throw new AppError(404, "not_found", "Payment not found");
     const pdf =
-      fee.pdfPath && fs.existsSync(fee.pdfPath) ? fs.readFileSync(fee.pdfPath) : receiptPdf(fee);
+      fee.pdfPath && fs.existsSync(fee.pdfPath) ? fs.readFileSync(fee.pdfPath) : await receiptPdf(fee);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${fee.receiptNo}.pdf"`);
     res.end(pdf);

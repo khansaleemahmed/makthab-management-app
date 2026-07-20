@@ -13,6 +13,7 @@ import { validateBody, validateQuery } from "../middleware/validate";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { AppError } from "../middleware/errorHandler";
 import { renderPdf } from "../lib/pdf";
+import { getOrgHeader } from "../lib/orgProfile";
 import { FILES_DIR } from "../lib/paths";
 import { uploadStudentPhoto, photoContentType } from "../lib/upload";
 
@@ -187,8 +188,8 @@ studentsRouter.get(
     if (!student) throw new AppError(404, "not_found", "Student not found");
 
     const pdf = renderPdf({
+      org: await getOrgHeader(),
       title: "Admission Letter",
-      subtitle: "Masjid-o-Madarasa — Makthab",
       lines: [
         ["Admission No", student.admissionNo],
         ["Name", student.fullName],

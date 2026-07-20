@@ -4,6 +4,17 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  // --- Org profile (letterhead printed on every PDF/XLSX report) ---
+  await prisma.orgProfile.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      id: 1,
+      name: "Masjid-O-Madarasa Umar-E-Farooq",
+      address: "20th Main, 8th Cross, BTM Layout, 1st Stage, Bangalore-560068",
+    },
+  });
+
   // --- Academic years (BUILD_CONTRACT §5) ---
   const years = [
     { name: "2024-2025", startDate: new Date("2024-06-01"), endDate: new Date("2025-05-31"), isActive: false },
