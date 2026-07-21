@@ -121,7 +121,7 @@ function ReportPaymentsTable({
   }, [feeType, month, year]);
 
   const { data, isLoading, isError, refetch } = useFees({ feeType, month, year, page, limit });
-  const cols = showFeeType ? 6 : 5;
+  const cols = showFeeType ? 7 : 6;
 
   return (
     <>
@@ -137,6 +137,7 @@ function ReportPaymentsTable({
             <TableRow>
               <TableHead>{t('fees.receiptNo')}</TableHead>
               <TableHead>{t('fees.student')}</TableHead>
+              <TableHead>{t('fees.admissionNo')}</TableHead>
               {showFeeType && <TableHead>{t('fees.feeType')}</TableHead>}
               <TableHead className="text-end">{t('fees.amountPaid')}</TableHead>
               <TableHead>{t('fees.paymentMethod')}</TableHead>
@@ -148,6 +149,7 @@ function ReportPaymentsTable({
               <TableRow key={f.id}>
                 <TableCell className="font-medium">{f.receiptNo}</TableCell>
                 <TableCell>{f.student?.fullName ?? f.studentId}</TableCell>
+                <TableCell>{f.student?.admissionNo ?? '-'}</TableCell>
                 {showFeeType && <TableCell className="capitalize">{f.feeType}</TableCell>}
                 <TableCell className="text-end">{formatCurrency(f.amountPaid, i18n.language)}</TableCell>
                 <TableCell className="capitalize">{f.paymentMethod}</TableCell>
@@ -155,7 +157,7 @@ function ReportPaymentsTable({
               </TableRow>
             ))}
             <TableRow className="font-semibold">
-              <TableCell colSpan={showFeeType ? 3 : 2}>{t('common.total')}</TableCell>
+              <TableCell colSpan={showFeeType ? 4 : 3}>{t('common.total')}</TableCell>
               <TableCell className="text-end">{formatCurrency(data.totalPaid, i18n.language)}</TableCell>
               <TableCell colSpan={2} />
             </TableRow>

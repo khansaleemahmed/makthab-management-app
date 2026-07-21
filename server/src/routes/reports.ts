@@ -322,11 +322,15 @@ reportsRouter.get(
       {
         title: "Monthly Fee Collection Report",
         subtitle: `${MONTH_ABBR[month - 1]}-${year}`,
-        headers: ["Receipt", "Student", "Type", "Paid", "Method", "Date"],
+        // "Type" is omitted here (unlike the on-screen table): every row in this
+        // report is already scoped to feeType="monthly" above, so the column
+        // would be constant dead weight — and on a fixed-width PDF, that weight
+        // was crowding out Method/Date into illegible truncation.
+        headers: ["Receipt", "Student", "Admission No", "Paid", "Method", "Date"],
         rows: fees.map((f) => [
           f.receiptNo,
           f.student?.fullName ?? "-",
-          f.feeType,
+          f.student?.admissionNo ?? "-",
           f.amountPaid,
           f.paymentMethod,
           new Date(f.paymentDate).toISOString().slice(0, 10),
@@ -358,15 +362,16 @@ reportsRouter.get(
       {
         title: "Admission Fee Collection Report",
         subtitle: year ? String(year) : "All",
-        headers: ["Receipt", "Student", "Paid", "Method", "Date"],
+        headers: ["Receipt", "Student", "Admission No", "Paid", "Method", "Date"],
         rows: fees.map((f) => [
           f.receiptNo,
           f.student?.fullName ?? "-",
+          f.student?.admissionNo ?? "-",
           f.amountPaid,
           f.paymentMethod,
           new Date(f.paymentDate).toISOString().slice(0, 10),
         ]),
-        currencyCols: [2],
+        currencyCols: [3],
         totalsRow: true,
       },
       false,

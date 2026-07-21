@@ -202,7 +202,9 @@ function PaymentsTable({
                 <SortableTableHead sortKey="amountPaid" sort={sort} onSort={onSort} className="text-end">
                   {t('fees.amountPaid')}
                 </SortableTableHead>
-                <TableHead>{t('fees.paymentDate')}</TableHead>
+                <SortableTableHead sortKey="paymentDate" sort={sort} onSort={onSort}>
+                  {t('fees.paymentDate')}
+                </SortableTableHead>
                 <SortableTableHead sortKey="receiptNo" sort={sort} onSort={onSort}>
                   {t('fees.receiptNo')}
                 </SortableTableHead>
