@@ -13,7 +13,8 @@
     "salaries": "Salaries",
     "reports": "Reports",
     "finance": "Finance",
-    "classes": "Classes"
+    "classes": "Classes",
+    "users": "Users"
   },
   "common": {
     "search": "Search",
@@ -204,6 +205,33 @@
     "deleted": "Salary payment deleted",
     "confirmDeleteTitle": "Delete Salary Payment",
     "confirmDelete": "Delete the {{month}} {{year}} salary payment for {{staff}}? This cannot be undone."
+  },
+  "users": {
+    "title": "Users",
+    "add": "Add User",
+    "fullName": "Full Name",
+    "username": "Username",
+    "password": "Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm Password",
+    "email": "Email",
+    "role": "Role",
+    "contactNo": "Contact No.",
+    "whatsappNo": "WhatsApp No.",
+    "address": "Address",
+    "photo": "Photo",
+    "created": "User added successfully",
+    "edit": "Edit User",
+    "updated": "User updated successfully",
+    "resetPassword": "Reset Password",
+    "resetPasswordFor": "Reset password for {{name}}",
+    "passwordReset": "Password reset successfully",
+    "deactivate": "Deactivate",
+    "reactivate": "Reactivate",
+    "deactivated": "User deactivated",
+    "reactivated": "User reactivated",
+    "confirmDeactivateTitle": "Deactivate User",
+    "confirmDeactivate": "Deactivate {{name}}? They will no longer be able to sign in until reactivated."
   },
   "reports": {
     "title": "Reports",

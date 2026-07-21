@@ -9,3 +9,4 @@ export * from "./schemas/fee";
 export * from "./schemas/attendance";
 export * from "./schemas/finance";
 export * from "./schemas/report";
+export * from "./schemas/user";

@@ -10,6 +10,7 @@ import { FeesPage } from '@/features/fees/FeesPage';
 import { AttendancePage } from '@/features/attendance/AttendancePage';
 import { FinancePage } from '@/features/finance/FinancePage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
+import { UsersPage } from '@/features/users/UsersPage';
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
 
             <Route element={<RequireRole roles={['Admin']} />}>
               <Route path="classes" element={<ClassesPage />} />
+              <Route path="users" element={<UsersPage />} />
             </Route>
 
             <Route element={<RequireRole roles={['Admin', 'Accountant']} />}>

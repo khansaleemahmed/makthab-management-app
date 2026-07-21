@@ -109,6 +109,7 @@ model Staff {
   baseSalary   Float
   contactNo    String
   whatsappNo   String
+  address      String?
   photoPath    String?
   status       String   @default("active")
   createdAt    DateTime @default(now())
@@ -127,6 +128,7 @@ model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
   passwordHash String
+  email        String   @unique
   role         String // Admin | Accountant | Teacher
   staffId      Int      @unique
   status       String   @default("active")

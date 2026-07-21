@@ -13,7 +13,8 @@
     "salaries": "الرواتب",
     "reports": "التقارير",
     "finance": "المالية",
-    "classes": "الصفوف"
+    "classes": "الصفوف",
+    "users": "المستخدمون"
   },
   "common": {
     "search": "بحث",
@@ -204,6 +205,33 @@
     "deleted": "تم حذف دفعة الراتب",
     "confirmDeleteTitle": "حذف دفعة الراتب",
     "confirmDelete": "هل تريد حذف دفعة راتب {{staff}} لشهر {{month}} {{year}}؟ لا يمكن التراجع عن هذا الإجراء."
+  },
+  "users": {
+    "title": "المستخدمون",
+    "add": "إضافة مستخدم",
+    "fullName": "الاسم الكامل",
+    "username": "اسم المستخدم",
+    "password": "كلمة المرور",
+    "newPassword": "كلمة المرور الجديدة",
+    "confirmPassword": "تأكيد كلمة المرور",
+    "email": "البريد الإلكتروني",
+    "role": "الدور",
+    "contactNo": "رقم الاتصال",
+    "whatsappNo": "رقم واتساب",
+    "address": "العنوان",
+    "photo": "الصورة",
+    "created": "تمت إضافة المستخدم بنجاح",
+    "edit": "تعديل المستخدم",
+    "updated": "تم تحديث المستخدم بنجاح",
+    "resetPassword": "إعادة تعيين كلمة المرور",
+    "resetPasswordFor": "إعادة تعيين كلمة المرور لـ {{name}}",
+    "passwordReset": "تم إعادة تعيين كلمة المرور بنجاح",
+    "deactivate": "إلغاء التنشيط",
+    "reactivate": "إعادة التنشيط",
+    "deactivated": "تم إلغاء تنشيط المستخدم",
+    "reactivated": "تم إعادة تنشيط المستخدم",
+    "confirmDeactivateTitle": "إلغاء تنشيط المستخدم",
+    "confirmDeactivate": "هل تريد إلغاء تنشيط {{name}}؟ لن يتمكن من تسجيل الدخول حتى إعادة التنشيط."
   },
   "reports": {
     "title": "التقارير",

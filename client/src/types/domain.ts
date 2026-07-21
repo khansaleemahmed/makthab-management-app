@@ -127,6 +127,22 @@ export interface Staff {
   status: string;
 }
 
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: string;
+  status: string;
+  staffId: number;
+  fullName: string;
+  contactNo: string;
+  whatsappNo: string;
+  address?: string | null;
+  photoPath?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface SalaryPayment {
   id: number;
   staffId: number;

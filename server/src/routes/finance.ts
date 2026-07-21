@@ -204,11 +204,18 @@ staffRouter.post(
         whatsappNo: dto.whatsappNo,
       },
     });
-    // Optionally provision an app login for this staff member.
+    // Optionally provision an app login for this staff member. email is required
+    // and unique on User; derive it from the username (same convention as seed).
     if (dto.username && dto.password && dto.appRole) {
       const passwordHash = await bcrypt.hash(dto.password, 12);
       await prisma.user.create({
-        data: { username: dto.username, passwordHash, role: dto.appRole, staffId: staff.id },
+        data: {
+          username: dto.username,
+          passwordHash,
+          email: `${dto.username}@makthab.local`,
+          role: dto.appRole,
+          staffId: staff.id,
+        },
       });
     }
     res.status(201).json({ data: staff });

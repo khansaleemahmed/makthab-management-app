@@ -9,6 +9,7 @@ import { referenceRouter } from "./reference";
 import { classesRouter } from "./classes";
 import { dashboardRouter } from "./dashboard";
 import { adminRouter } from "./admin";
+import { usersRouter } from "./users";
 
 // Aggregate router for /api/v1. Every domain from doc §6 is mounted here.
 export const apiRouter = Router();
@@ -19,6 +20,7 @@ apiRouter.use("/fees", feesRouter);
 apiRouter.use("/attendance", attendanceRouter);
 apiRouter.use("/expenses", expensesRouter);
 apiRouter.use("/staff", staffRouter);
+apiRouter.use("/users", usersRouter);
 apiRouter.use("/salaries", salariesRouter);
 apiRouter.use("/reports", reportsRouter);
 apiRouter.use("/dashboard", dashboardRouter);

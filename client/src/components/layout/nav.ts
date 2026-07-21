@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Users,
+  UserCog,
   GraduationCap,
   ReceiptIndianRupee,
   CalendarCheck,
@@ -26,6 +27,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/attendance', labelKey: 'nav.attendance', icon: CalendarCheck, roles: ['Admin', 'Teacher'] },
   { to: '/finance', labelKey: 'nav.finance', icon: Wallet, roles: ['Admin', 'Accountant'] },
   { to: '/reports', labelKey: 'nav.reports', icon: FileBarChart, roles: ['Admin', 'Accountant'] },
+  { to: '/users', labelKey: 'nav.users', icon: UserCog, roles: ['Admin'] },
 ];
 
 export function visibleNavItems(role: Role | undefined): NavItem[] {

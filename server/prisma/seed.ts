@@ -77,10 +77,11 @@ async function main() {
   const adminHash = await bcrypt.hash("admin123", 12);
   await prisma.user.upsert({
     where: { username: "admin" },
-    update: { passwordHash: adminHash, role: "Admin", staffId: adminStaff.id },
+    update: { passwordHash: adminHash, email: "admin@makthab.local", role: "Admin", staffId: adminStaff.id },
     create: {
       username: "admin",
       passwordHash: adminHash,
+      email: "admin@makthab.local",
       role: "Admin",
       staffId: adminStaff.id,
     },
@@ -103,10 +104,11 @@ async function main() {
   const accountantHash = await bcrypt.hash("accountant123", 12);
   await prisma.user.upsert({
     where: { username: "accountant" },
-    update: { passwordHash: accountantHash, role: "Accountant", staffId: accountantStaff.id },
+    update: { passwordHash: accountantHash, email: "accountant@makthab.local", role: "Accountant", staffId: accountantStaff.id },
     create: {
       username: "accountant",
       passwordHash: accountantHash,
+      email: "accountant@makthab.local",
       role: "Accountant",
       staffId: accountantStaff.id,
     },
@@ -129,10 +131,11 @@ async function main() {
   const teacherHash = await bcrypt.hash("teacher123", 12);
   await prisma.user.upsert({
     where: { username: "teacher" },
-    update: { passwordHash: teacherHash, role: "Teacher", staffId: teacherStaff.id },
+    update: { passwordHash: teacherHash, email: "teacher@makthab.local", role: "Teacher", staffId: teacherStaff.id },
     create: {
       username: "teacher",
       passwordHash: teacherHash,
+      email: "teacher@makthab.local",
       role: "Teacher",
       staffId: teacherStaff.id,
     },
