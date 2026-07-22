@@ -18,10 +18,12 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { AppError } from "../middleware/errorHandler";
 import { actorStaffId } from "../lib/actor";
 import { nextReceiptNo } from "../lib/docNo";
-import { renderPdf } from "../lib/pdf";
+import { renderReceiptPdf, parseJpegInfo, type EmbeddedImage } from "../lib/pdf";
 import { getOrgHeader } from "../lib/orgProfile";
-import { buildWhatsAppLink } from "../lib/whatsapp";
-import { RECEIPTS_DIR, ensureDir } from "../lib/paths";
+import { MONTH_NAMES, MONTH_ABBR } from "../lib/monthNames";
+import { buildWhatsAppLink, sendWhatsAppDocumentViaBusinessApi } from "../lib/whatsapp";
+import { env } from "../lib/env";
+import { RECEIPTS_DIR, FILES_DIR, ensureDir } from "../lib/paths";
 
 export const feesRouter = Router();
 
@@ -29,26 +31,63 @@ feesRouter.use(requireAuth, requireRole("Admin", "Accountant"));
 
 type FeeWithStudent = Awaited<ReturnType<typeof loadFee>>;
 async function loadFee(id: number) {
-  return prisma.feePayment.findUnique({ where: { id }, include: { student: true } });
+  return prisma.feePayment.findUnique({
+    where: { id },
+    include: { student: true, collectedBy: true },
+  });
+}
+
+// Load the collecting staff member's uploaded signature (if any) as an
+// EmbeddedImage ready for the PDF writer. Signatures are JPEG-only (see
+// upload.ts) so parseJpegInfo always applies here.
+function loadSignatureImage(signaturePath: string | null): EmbeddedImage | undefined {
+  if (!signaturePath) return undefined;
+  const abs = path.join(FILES_DIR, signaturePath);
+  if (!fs.existsSync(abs)) return undefined;
+  const bytes = fs.readFileSync(abs);
+  try {
+    const info = parseJpegInfo(bytes);
+    return { bytes, width: info.width, height: info.height, numComponents: info.numComponents };
+  } catch {
+    // Corrupt/unreadable signature file — fall back to the text-only
+    // "Name (Role)" line rather than failing receipt generation entirely.
+    return undefined;
+  }
+}
+
+// "monthly" -> "Monthly Fee", "admission" -> "Admission Fee", etc.
+function feeTypeLabel(feeType: string): string {
+  return `${feeType.charAt(0).toUpperCase()}${feeType.slice(1)} Fee`;
+}
+
+// "July 2026" for a monthly fee; just the year ("2024") when there's no month
+// (admission/annual/other fees aren't tied to a specific month).
+function periodLabel(feeMonth: number | null, feeYear: number): string {
+  return feeMonth ? `${MONTH_NAMES[feeMonth - 1]} ${feeYear}` : String(feeYear);
+}
+
+function formatReceiptDate(d: Date | string): string {
+  const date = new Date(d);
+  return `${String(date.getUTCDate()).padStart(2, "0")}-${MONTH_ABBR[date.getUTCMonth()]}-${date.getUTCFullYear()}`;
 }
 
 async function receiptPdf(fee: NonNullable<FeeWithStudent>): Promise<Buffer> {
-  return renderPdf({
+  return renderReceiptPdf({
     org: await getOrgHeader(),
-    title: "Fee Receipt",
-    subtitle: `Receipt No: ${fee.receiptNo}`,
-    lines: [
-      ["Student", fee.student?.fullName ?? "-"],
-      ["Admission No", fee.student?.admissionNo ?? "-"],
-      ["Fee Type", fee.feeType],
-      ["Period", fee.feeMonth ? `${fee.feeMonth}/${fee.feeYear}` : String(fee.feeYear)],
-      ["Amount Due", fee.amountDue.toFixed(2)],
-      ["Amount Paid", fee.amountPaid.toFixed(2)],
-      ["Waiver", fee.waiverAmount.toFixed(2)],
-      ["Method", fee.paymentMethod],
-      ["Date", new Date(fee.paymentDate).toISOString().slice(0, 10)],
-    ],
-    footer: "Thank you. — Makthab",
+    receiptNo: fee.receiptNo,
+    date: formatReceiptDate(fee.paymentDate),
+    studentName: fee.student?.fullName ?? "-",
+    admissionNo: fee.student?.admissionNo ?? "-",
+    feeType: feeTypeLabel(fee.feeType),
+    period: periodLabel(fee.feeMonth, fee.feeYear),
+    amountPaid: fee.amountPaid,
+    signature: fee.collectedBy
+      ? {
+        image: loadSignatureImage(fee.collectedBy.signaturePath),
+        staffName: fee.collectedBy.fullName,
+        staffRole: fee.collectedBy.role,
+      }
+      : undefined,
   });
 }
 
@@ -61,7 +100,12 @@ feesRouter.post(
     const student = await prisma.student.findUnique({ where: { id: dto.studentId } });
     if (!student) throw new AppError(404, "not_found", "Student not found");
 
-    const receiptNo = await nextReceiptNo();
+    const receiptNo = await nextReceiptNo({
+      feeType: dto.feeType,
+      admissionNo: student.admissionNo,
+      feeYear: dto.feeYear,
+      feeMonth: dto.feeMonth,
+    });
     const created = await prisma.feePayment.create({
       data: {
         receiptNo,
@@ -76,7 +120,7 @@ feesRouter.post(
         waiverAmount: dto.waiverAmount ?? 0,
         collectedById: actorStaffId(req),
       },
-      include: { student: true },
+      include: { student: true, collectedBy: true },
     });
 
     const pdfPath = path.join(ensureDir(RECEIPTS_DIR), `${receiptNo}.pdf`);
@@ -241,8 +285,8 @@ feesRouter.get(
       ? q.sortBy === "student"
         ? { student: { fullName: q.sortOrder } }
         : q.sortBy === "admissionNo"
-        ? { student: { admissionNo: q.sortOrder } }
-        : { [q.sortBy]: q.sortOrder }
+          ? { student: { admissionNo: q.sortOrder } }
+          : { [q.sortBy]: q.sortOrder }
       : { student: { admissionNo: "asc" as const } };
     const skip = (q.page - 1) * q.limit;
     // paid/unpaid compares two columns (amountPaid vs amountDue), which Prisma
@@ -258,8 +302,8 @@ feesRouter.get(
       q.status === "paid"
         ? rows.filter((r) => r.amountPaid >= r.amountDue)
         : q.status === "unpaid"
-        ? rows.filter((r) => r.amountPaid < r.amountDue)
-        : rows;
+          ? rows.filter((r) => r.amountPaid < r.amountDue)
+          : rows;
     const items = q.status ? filtered.slice(skip, skip + q.limit) : filtered;
     const total = q.status ? filtered.length : await prisma.feePayment.count({ where });
     const agg = await prisma.feePayment.aggregate({ _sum: { amountPaid: true }, where });
@@ -326,7 +370,7 @@ feesRouter.delete(
 
     await prisma.feePayment.delete({ where: { id } });
     if (fee.pdfPath) {
-      await fs.promises.rm(fee.pdfPath, { force: true }).catch(() => {});
+      await fs.promises.rm(fee.pdfPath, { force: true }).catch(() => { });
     }
     res.json({ data: { id } });
   })
@@ -346,17 +390,43 @@ feesRouter.get(
   })
 );
 
-// POST /fees/:id/whatsapp — build a wa.me link and mark as sent.
+// POST /fees/:id/whatsapp — send the receipt to the student's registered
+// WhatsApp number and mark it sent. Idempotent-guarded (not idempotent-quiet
+// like the soft-delete endpoints elsewhere): a repeat call is a genuine user
+// mistake (double-click, forgot they already sent it), so it 409s with a
+// clear message instead of silently re-sending.
+//
+// Two gateways, switched by WHATSAPP_GATEWAY (see lib/env.ts):
+//   walink (default): can't attach files (it's a URL scheme, not an API), so
+//     the client downloads the PDF itself and opens the returned wa.me link
+//     for the staff member to manually attach it.
+//   business-api: the server sends the PDF directly via the Meta Cloud API —
+//     fully automatic, no client-side download/open needed.
 feesRouter.post(
   "/:id/whatsapp",
   asyncHandler(async (req, res) => {
     const fee = await loadFee(Number(req.params.id));
     if (!fee) throw new AppError(404, "not_found", "Payment not found");
-    const message =
-      `Assalamu Alaikum. Fee receipt ${fee.receiptNo} for ${fee.student?.fullName ?? ""}: ` +
+    if (fee.whatsappSent) {
+      throw new AppError(409, "already_sent", "Receipt already sent via WhatsApp");
+    }
+    if (!fee.student?.whatsappNo) {
+      throw new AppError(400, "no_whatsapp_number", "Student has no WhatsApp number on file");
+    }
+    const caption =
+      `Assalamu Alaikum. Fee receipt ${fee.receiptNo} for ${fee.student.fullName}: ` +
       `${fee.amountPaid.toFixed(2)} paid on ${new Date(fee.paymentDate).toISOString().slice(0, 10)}. JazakAllah.`;
-    const link = buildWhatsAppLink(fee.student?.whatsappNo ?? "", message);
+
+    if (env.whatsappGateway === "business-api") {
+      const pdf = fee.pdfPath && fs.existsSync(fee.pdfPath) ? fs.readFileSync(fee.pdfPath) : await receiptPdf(fee);
+      await sendWhatsAppDocumentViaBusinessApi(fee.student.whatsappNo, pdf, `${fee.receiptNo}.pdf`, caption);
+      await prisma.feePayment.update({ where: { id: fee.id }, data: { whatsappSent: true } });
+      res.json({ data: { mode: "business-api", whatsappSent: true } });
+      return;
+    }
+
+    const link = buildWhatsAppLink(fee.student.whatsappNo, caption);
     await prisma.feePayment.update({ where: { id: fee.id }, data: { whatsappSent: true } });
-    res.json({ data: { link, whatsappSent: true } });
+    res.json({ data: { mode: "walink", link, whatsappSent: true } });
   })
 );

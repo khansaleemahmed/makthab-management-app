@@ -122,6 +122,26 @@ export function useDeleteStaff() {
   });
 }
 
+/**
+ * Upload a staff member's signature image (multipart, field "signature") —
+ * stamped onto every fee receipt they collect payment for. JPEG only, mirrors
+ * useUploadStaffPhoto.
+ */
+export function useUploadStaffSignature() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: number; file: File }) => {
+      const form = new FormData();
+      form.append('signature', file);
+      const res = await api.post(`/staff/${id}/signature`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return unwrap<Staff>(res.data);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['staff'] }),
+  });
+}
+
 // ---- Salaries ---------------------------------------------------------------
 export interface SalaryListParams extends ListParams {
   staff_id?: number;

@@ -24,7 +24,7 @@ import { AppError } from "../middleware/errorHandler";
 import { actorStaffId } from "../lib/actor";
 import { nextVoucherNo } from "../lib/docNo";
 import { FILES_DIR } from "../lib/paths";
-import { uploadStaffPhoto, photoContentType } from "../lib/upload";
+import { uploadStaffPhoto, uploadStaffSignature, photoContentType } from "../lib/upload";
 
 // ---- Expenses (Admin, Accountant) ------------------------------------------
 export const expensesRouter = Router();
@@ -295,6 +295,54 @@ staffRouter.get(
     if (!fs.existsSync(abs)) throw new AppError(404, "not_found", "Photo file missing");
 
     res.setHeader("Content-Type", photoContentType(abs));
+    const stream = fs.createReadStream(abs);
+    stream.on("error", (err) => res.destroy(err));
+    stream.pipe(res);
+  })
+);
+
+// POST /staff/:id/signature — upload/replace the staff member's signature
+// image (JPEG only — stamped onto fee receipts, see lib/pdf.ts).
+staffRouter.post(
+  "/:id/signature",
+  uploadStaffSignature,
+  asyncHandler(async (req, res) => {
+    if (!req.file) {
+      throw new AppError(400, "no_file", "No signature uploaded (form field must be 'signature')");
+    }
+    const id = Number(req.params.id);
+    const existing = await prisma.staff.findUnique({ where: { id } });
+    if (!existing) {
+      await fs.promises.rm(req.file.path, { force: true });
+      throw new AppError(404, "not_found", "Staff not found");
+    }
+
+    if (existing.signaturePath) {
+      await fs.promises.rm(path.join(FILES_DIR, existing.signaturePath), { force: true });
+    }
+
+    const signaturePath = `photos/${req.file.filename}`;
+    const staff = await prisma.staff.update({ where: { id }, data: { signaturePath } });
+    res.json({ data: staff });
+  })
+);
+
+// GET /staff/:id/signature — stream the stored signature image.
+staffRouter.get(
+  "/:id/signature",
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const staff = await prisma.staff.findUnique({
+      where: { id },
+      select: { signaturePath: true },
+    });
+    if (!staff) throw new AppError(404, "not_found", "Staff not found");
+    if (!staff.signaturePath) throw new AppError(404, "not_found", "Staff has no signature");
+
+    const abs = path.join(FILES_DIR, staff.signaturePath);
+    if (!fs.existsSync(abs)) throw new AppError(404, "not_found", "Signature file missing");
+
+    res.setHeader("Content-Type", "image/jpeg");
     const stream = fs.createReadStream(abs);
     stream.on("error", (err) => res.destroy(err));
     stream.pipe(res);

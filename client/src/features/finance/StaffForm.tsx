@@ -19,7 +19,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { useToast } from '@/components/ui/use-toast';
 import { staffCreateSchema, type StaffCreateInput } from '@/lib/schemas';
 import { api, extractApiError } from '@/api/client';
-import { useAddStaff, useUpdateStaff, useUploadStaffPhoto } from './api';
+import { useAddStaff, useUpdateStaff, useUploadStaffPhoto, useUploadStaffSignature } from './api';
 import type { Staff } from '@/types/domain';
 
 interface Props {
@@ -37,10 +37,13 @@ export function StaffForm({ open, onOpenChange, staff }: Props) {
   const add = useAddStaff();
   const update = useUpdateStaff(staff?.id ?? 0);
   const uploadPhoto = useUploadStaffPhoto();
+  const uploadSignature = useUploadStaffSignature();
   const mutation = isEdit ? update : add;
 
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState<string | null>(null);
 
   const {
     register,
@@ -97,11 +100,46 @@ export function StaffForm({ open, onOpenChange, staff }: Props) {
     };
   }, [previewUrl]);
 
+  // Load an existing signature for the preview — same authed-blob-fetch
+  // pattern as the photo above, since signatures live on the same endpoint
+  // family (/staff/:id/signature).
+  useEffect(() => {
+    if (!open) return;
+    setSignatureFile(null);
+    setSignaturePreviewUrl(null);
+    if (!staff?.signaturePath) return;
+    let active = true;
+    api
+      .get(`/staff/${staff.id}/signature`, { responseType: 'blob' })
+      .then((res) => {
+        if (active) setSignaturePreviewUrl(URL.createObjectURL(res.data as Blob));
+      })
+      .catch(() => {
+        /* no signature / not found — leave preview empty */
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, staff]);
+
+  useEffect(() => {
+    return () => {
+      if (signaturePreviewUrl) URL.revokeObjectURL(signaturePreviewUrl);
+    };
+  }, [signaturePreviewUrl]);
+
   function onPhotoChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     if (!file) return;
     setPhotoFile(file);
     setPreviewUrl(URL.createObjectURL(file));
+  }
+
+  function onSignatureChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+    setSignatureFile(file);
+    setSignaturePreviewUrl(URL.createObjectURL(file));
   }
 
   const onSubmit = handleSubmit(async (values) => {
@@ -111,6 +149,9 @@ export function StaffForm({ open, onOpenChange, staff }: Props) {
         : await add.mutateAsync(values);
       if (photoFile) {
         await uploadPhoto.mutateAsync({ id: saved.id, file: photoFile });
+      }
+      if (signatureFile) {
+        await uploadSignature.mutateAsync({ id: saved.id, file: signatureFile });
       }
       toast({ title: t(isEdit ? 'staff.updated' : 'staff.created'), variant: 'success' });
       reset();
@@ -186,12 +227,30 @@ export function StaffForm({ open, onOpenChange, staff }: Props) {
             <Input {...register('whatsappNo')} />
           </Field>
 
+          <div className="flex items-center gap-4 sm:col-span-2">
+            {signaturePreviewUrl ? (
+              <img
+                src={signaturePreviewUrl}
+                alt=""
+                className="h-12 w-28 rounded-md border object-contain bg-white"
+              />
+            ) : (
+              <div className="flex h-12 w-28 items-center justify-center rounded-md border bg-muted text-center text-xs text-muted-foreground">
+                {t('staff.signature')}
+              </div>
+            )}
+            <div>
+              <Label className="mb-1 block text-xs text-muted-foreground">{t('staff.signature')}</Label>
+              <Input type="file" accept="image/jpeg" onChange={onSignatureChange} className="max-w-xs" />
+            </div>
+          </div>
+
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={mutation.isPending || uploadPhoto.isPending}>
-              {(mutation.isPending || uploadPhoto.isPending) && <Spinner className="me-2" />}
+            <Button type="submit" disabled={mutation.isPending || uploadPhoto.isPending || uploadSignature.isPending}>
+              {(mutation.isPending || uploadPhoto.isPending || uploadSignature.isPending) && <Spinner className="me-2" />}
               {t('common.save')}
             </Button>
           </DialogFooter>

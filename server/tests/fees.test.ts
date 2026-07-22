@@ -1,6 +1,14 @@
 import request from "supertest";
 import { API, CREDS, bearer, describeApi, loadApp, login } from "./helpers";
 
+// superagent doesn't buffer unknown binary bodies by default; collect the raw
+// bytes so the PDF's own text can be inspected (same pattern as reports.test.ts).
+function binaryParser(res: request.Response, cb: (err: Error | null, body: Buffer) => void): void {
+  const chunks: Buffer[] = [];
+  res.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+  res.on("end", () => cb(null, Buffer.concat(chunks)));
+}
+
 // Fees (doc §6.2)
 describeApi("fees", () => {
   const app = () => loadApp()!;
@@ -89,9 +97,52 @@ describeApi("fees", () => {
     expect(r.headers["content-type"]).toMatch(/application\/pdf/);
   });
 
+  it("GET /fees/:id/receipt -> embeds the collecting staff member's signature when uploaded", async () => {
+    // A structurally-valid-but-tiny JPEG (SOI + SOF0 + EOI, no scan data) —
+    // enough for parseJpegInfo to read width/height/components without a
+    // real photographic image.
+    const jpeg = Buffer.from(
+      "ffd8ffc00011080028006403012200021101031101ffd9",
+      "hex"
+    );
+    // The accountant token's own staff record (seeded as staff id 2).
+    await request(app())
+      .post(`${API}/staff/2/signature`)
+      .set(bearer(token))
+      .attach("signature", jpeg, { filename: "s.jpg", contentType: "image/jpeg" });
+
+    const created = await request(app()).post(`${API}/fees`).set(bearer(token)).send({
+      studentId,
+      feeType: "monthly",
+      feeMonth: 7,
+      feeYear: 2026,
+      amountDue: 200,
+      amountPaid: 200,
+      paymentDate: "2026-07-05",
+      paymentMethod: "cash",
+    });
+    const r = await request(app())
+      .get(`${API}/fees/${created.body.data.id}/receipt`)
+      .set(bearer(token))
+      .buffer()
+      .parse(binaryParser);
+    const pdfText = (r.body as Buffer).toString("latin1");
+    expect(pdfText).toContain("/Filter /DCTDecode");
+    // Parentheses are backslash-escaped in PDF text operators (see esc() in lib/pdf.ts).
+    expect(pdfText).toContain("Accountant \\(Accountant\\)");
+  });
+
   it("POST /fees/:id/whatsapp -> dispatch (wa.me link for MVP) {data}", async () => {
     const r = await request(app()).post(`${API}/fees/${feeId}/whatsapp`).set(bearer(token)).send({});
     expect([200, 201]).toContain(r.status);
+    expect(r.body.data.link).toMatch(/^https:\/\/wa\.me\//);
+    expect(r.body.data.whatsappSent).toBe(true);
+  });
+
+  it("POST /fees/:id/whatsapp again -> 409 already sent", async () => {
+    const r = await request(app()).post(`${API}/fees/${feeId}/whatsapp`).set(bearer(token)).send({});
+    expect(r.status).toBe(409);
+    expect(r.body.error.code).toBe("already_sent");
   });
 
   it("GET /fees/defaulters -> list outstanding (month/year required)", async () => {

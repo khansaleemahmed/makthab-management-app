@@ -111,6 +111,7 @@ model Staff {
   whatsappNo   String
   address      String?
   photoPath    String?
+  signaturePath String?
   status       String   @default("active")
   createdAt    DateTime @default(now())
 

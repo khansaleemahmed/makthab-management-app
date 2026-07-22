@@ -7,6 +7,7 @@ import { validateQuery } from "../middleware/validate";
 import { renderPdf } from "../lib/pdf";
 import { renderXlsx, XLSX_CONTENT_TYPE } from "../lib/excel";
 import { getOrgHeader } from "../lib/orgProfile";
+import { MONTH_NAMES, MONTH_ABBR } from "../lib/monthNames";
 import {
   feeCollectionSummaryQuery,
   salaryRegisterSummaryQuery,
@@ -25,13 +26,6 @@ import {
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth, requireRole("Admin", "Accountant"));
 
-// English full month names — PDFs are ASCII-only (CLAUDE.md), so no i18n here.
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-// 3-letter abbreviations for compact subtitles/filenames (e.g. "Jan-2026").
-const MONTH_ABBR = MONTH_NAMES.map((m) => m.slice(0, 3));
 
 // Aggregate a single year's monthly-fee payments by month (all 12, zero-filled).
 export async function monthlyFeeBreakdown(year: number): Promise<MonthlyFeeBreakdownRow[]> {

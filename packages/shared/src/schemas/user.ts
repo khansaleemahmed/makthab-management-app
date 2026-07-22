@@ -73,6 +73,7 @@ export type UserDto = {
   whatsappNo: string;
   address: string | null;
   photoPath: string | null;
+  signaturePath: string | null;
   createdAt: string;
   updatedAt: string;
 };

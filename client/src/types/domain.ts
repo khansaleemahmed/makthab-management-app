@@ -124,6 +124,7 @@ export interface Staff {
   contactNo: string;
   whatsappNo: string;
   photoPath?: string | null;
+  signaturePath?: string | null;
   status: string;
 }
 
@@ -139,6 +140,7 @@ export interface User {
   whatsappNo: string;
   address?: string | null;
   photoPath?: string | null;
+  signaturePath?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

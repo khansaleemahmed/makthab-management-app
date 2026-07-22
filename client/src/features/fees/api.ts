@@ -138,7 +138,24 @@ export function downloadReceipt(fee: FeePayment) {
   return downloadFile(`/fees/${fee.id}/receipt`, `receipt-${fee.receiptNo}.pdf`);
 }
 
-/** Ask the server to dispatch the receipt to the student's WhatsApp (wa.me for MVP). */
-export function sendReceiptWhatsApp(feeId: number) {
-  return api.post(`/fees/${feeId}/whatsapp`);
+/**
+ * Ask the server to send the receipt via WhatsApp and mark it sent. The
+ * server 409s if it was already sent — the caller's error handler surfaces
+ * that message as-is.
+ *
+ * Two response shapes depending on the server's configured gateway:
+ *   mode: "walink" — can't attach files itself, so the caller must download
+ *     the receipt PDF and open `link` (a wa.me chat) for manual attach.
+ *   mode: "business-api" — the server already sent the PDF directly; nothing
+ *     more for the caller to do.
+ */
+export function useSendReceiptWhatsApp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (feeId: number) =>
+      unwrap<{ mode: 'walink'; link: string; whatsappSent: boolean } | { mode: 'business-api'; whatsappSent: boolean }>(
+        (await api.post(`/fees/${feeId}/whatsapp`)).data,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['fees'] }),
+  });
 }

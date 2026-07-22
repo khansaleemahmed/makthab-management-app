@@ -108,6 +108,40 @@ describeApi("finance (expenses/staff/salaries)", () => {
     expect(r.status).toBe(404);
   });
 
+  it("POST /staff/:id/signature -> stores signature, sets signaturePath {data}", async () => {
+    const jpeg = Buffer.from("ffd8ffe0", "hex"); // JPEG magic bytes (upload doesn't parse the image)
+    const r = await request(app())
+      .post(`${API}/staff/${staffId}/signature`)
+      .set(bearer(token))
+      .attach("signature", jpeg, { filename: "s.jpg", contentType: "image/jpeg" });
+    expect(r.status).toBe(200);
+    expect(r.body.data.signaturePath).toMatch(/^photos\/staff-.*-signature-/);
+  });
+
+  it("GET /staff/:id/signature -> streams the stored image", async () => {
+    const r = await request(app()).get(`${API}/staff/${staffId}/signature`).set(bearer(token));
+    expect(r.status).toBe(200);
+    expect(r.headers["content-type"]).toBe("image/jpeg");
+  });
+
+  it("POST /staff/:id/signature rejects non-JPEG -> 400", async () => {
+    const png = Buffer.from("89504e470d0a1a0a", "hex");
+    const r = await request(app())
+      .post(`${API}/staff/${staffId}/signature`)
+      .set(bearer(token))
+      .attach("signature", png, { filename: "s.png", contentType: "image/png" });
+    expect(r.status).toBe(400);
+  });
+
+  it("POST /staff/:id/signature missing staff -> 404", async () => {
+    const jpeg = Buffer.from("ffd8ffe0", "hex");
+    const r = await request(app())
+      .post(`${API}/staff/99999999/signature`)
+      .set(bearer(token))
+      .attach("signature", jpeg, { filename: "s.jpg", contentType: "image/jpeg" });
+    expect(r.status).toBe(404);
+  });
+
   it("POST /salaries -> creates a single payment, derives netAmount {data}", async () => {
     const r = await request(app())
       .post(`${API}/salaries`)

@@ -37,6 +37,7 @@ function toUserDto(user: User & { staff: Staff }): UserDto {
     whatsappNo: user.staff.whatsappNo,
     address: user.staff.address,
     photoPath: user.staff.photoPath,
+    signaturePath: user.staff.signaturePath,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };

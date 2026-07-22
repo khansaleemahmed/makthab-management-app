@@ -36,8 +36,8 @@ import {
   useDefaulters,
   useUpdateDefaulter,
   useDeleteFee,
+  useSendReceiptWhatsApp,
   downloadReceipt,
-  sendReceiptWhatsApp,
 } from './api';
 import { FeeForm } from './FeeForm';
 import { FeeStructures } from './FeeStructures';
@@ -117,6 +117,7 @@ function PaymentsTable({
   const [deleting, setDeleting] = useState<FeePayment | null>(null);
   const { sort, toggle } = useSort({ sortBy: '', sortOrder: 'asc' });
   const del = useDeleteFee();
+  const sendWhatsApp = useSendReceiptWhatsApp();
 
   // Reset to the first page whenever the filter selection changes.
   useEffect(() => {
@@ -148,7 +149,13 @@ function PaymentsTable({
 
   const whatsapp = async (f: FeePayment) => {
     try {
-      await sendReceiptWhatsApp(f.id);
+      const result = await sendWhatsApp.mutateAsync(f.id);
+      if (result.mode === 'walink') {
+        // wa.me can't attach files itself — download the PDF so the staff
+        // member has it locally, then open the pre-filled chat to attach it.
+        await downloadReceipt(f);
+        window.open(result.link, '_blank', 'noopener,noreferrer');
+      }
       toast({ title: t('fees.whatsapp'), variant: 'success' });
     } catch (err) {
       toast({ title: extractApiError(err).message, variant: 'destructive' });

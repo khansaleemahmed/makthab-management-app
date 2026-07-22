@@ -24,7 +24,7 @@ import {
 } from '@/lib/schemas';
 import { api, extractApiError } from '@/api/client';
 import { useAddUser, useUpdateUser } from './api';
-import { useUploadStaffPhoto } from '../finance/api';
+import { useUploadStaffPhoto, useUploadStaffSignature } from '../finance/api';
 import type { User } from '@/types/domain';
 
 interface Props {
@@ -43,10 +43,13 @@ export function UserForm({ open, onOpenChange, user }: Props) {
   const add = useAddUser();
   const update = useUpdateUser(user?.id ?? 0);
   const uploadPhoto = useUploadStaffPhoto();
+  const uploadSignature = useUploadStaffSignature();
   const mutation = isEdit ? update : add;
 
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState<string | null>(null);
 
   const {
     register,
@@ -106,11 +109,45 @@ export function UserForm({ open, onOpenChange, user }: Props) {
     };
   }, [previewUrl]);
 
+  // Signatures live on the same linked staff record as photos (same authed-
+  // blob-fetch reason — a plain <img src> can't send the Bearer token).
+  useEffect(() => {
+    if (!open) return;
+    setSignatureFile(null);
+    setSignaturePreviewUrl(null);
+    if (!user?.signaturePath || !user.staffId) return;
+    let active = true;
+    api
+      .get(`/staff/${user.staffId}/signature`, { responseType: 'blob' })
+      .then((res) => {
+        if (active) setSignaturePreviewUrl(URL.createObjectURL(res.data as Blob));
+      })
+      .catch(() => {
+        /* no signature / not found — leave preview empty */
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, user]);
+
+  useEffect(() => {
+    return () => {
+      if (signaturePreviewUrl) URL.revokeObjectURL(signaturePreviewUrl);
+    };
+  }, [signaturePreviewUrl]);
+
   function onPhotoChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
     if (!file) return;
     setPhotoFile(file);
     setPreviewUrl(URL.createObjectURL(file));
+  }
+
+  function onSignatureChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+    setSignatureFile(file);
+    setSignaturePreviewUrl(URL.createObjectURL(file));
   }
 
   const onSubmit = handleSubmit(async (values) => {
@@ -120,6 +157,11 @@ export function UserForm({ open, onOpenChange, user }: Props) {
         : await add.mutateAsync(values);
       if (photoFile && saved.staffId) {
         await uploadPhoto.mutateAsync({ id: saved.staffId, file: photoFile });
+      }
+      if (signatureFile && saved.staffId) {
+        await uploadSignature.mutateAsync({ id: saved.staffId, file: signatureFile });
+      }
+      if ((photoFile || signatureFile) && saved.staffId) {
         qc.invalidateQueries({ queryKey: ['users'] });
       }
       toast({ title: t(isEdit ? 'users.updated' : 'users.created'), variant: 'success' });
@@ -207,12 +249,30 @@ export function UserForm({ open, onOpenChange, user }: Props) {
             <Input {...register('address')} />
           </Field>
 
+          <div className="flex items-center gap-4 sm:col-span-2">
+            {signaturePreviewUrl ? (
+              <img
+                src={signaturePreviewUrl}
+                alt=""
+                className="h-12 w-28 rounded-md border object-contain bg-white"
+              />
+            ) : (
+              <div className="flex h-12 w-28 items-center justify-center rounded-md border bg-muted text-center text-xs text-muted-foreground">
+                {t('users.signature')}
+              </div>
+            )}
+            <div>
+              <Label className="mb-1 block text-xs text-muted-foreground">{t('users.signature')}</Label>
+              <Input type="file" accept="image/jpeg" onChange={onSignatureChange} className="max-w-xs" />
+            </div>
+          </div>
+
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={mutation.isPending || uploadPhoto.isPending}>
-              {(mutation.isPending || uploadPhoto.isPending) && <Spinner className="me-2" />}
+            <Button type="submit" disabled={mutation.isPending || uploadPhoto.isPending || uploadSignature.isPending}>
+              {(mutation.isPending || uploadPhoto.isPending || uploadSignature.isPending) && <Spinner className="me-2" />}
               {t('common.save')}
             </Button>
           </DialogFooter>

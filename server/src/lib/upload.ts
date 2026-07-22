@@ -120,3 +120,53 @@ export function photoContentType(filePath: string): string {
       return "image/jpeg";
   }
 }
+
+// Staff signatures, keyed off staff id like staff photos — but JPEG-only:
+// the dependency-free PDF writer embeds signature images via JPEG's own
+// DCTDecode filter (no PNG/WebP decoder), so only JPEG can be stamped onto
+// a receipt.
+const SIGNATURE_TYPES = new Map<string, string>([["image/jpeg", ".jpg"]]);
+
+const signatureStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, ensureDir(PHOTOS_DIR));
+  },
+  filename: (req, file, cb) => {
+    void (async () => {
+      const id = Number(req.params.id);
+      const staff = await prisma.staff.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!staff) {
+        return cb(new AppError(404, "not_found", "Staff not found"), "");
+      }
+      const ext = SIGNATURE_TYPES.get(file.mimetype) ?? path.extname(file.originalname);
+      cb(null, `staff-${staff.id}-signature-${Date.now()}${ext}`);
+    })().catch((err) => cb(err as Error, ""));
+  },
+});
+
+const signatureUpload = multer({
+  storage: signatureStorage,
+  limits: { fileSize: MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!SIGNATURE_TYPES.has(file.mimetype)) {
+      return cb(new AppError(400, "invalid_file", "Signature must be a JPEG image"));
+    }
+    cb(null, true);
+  },
+});
+
+export function uploadStaffSignature(req: Request, res: Response, next: NextFunction) {
+  signatureUpload.single("signature")(req, res, (err: unknown) => {
+    if (err instanceof MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return next(new AppError(400, "file_too_large", "Signature must be 3MB or smaller"));
+      }
+      return next(new AppError(400, "upload_error", err.message));
+    }
+    if (err) return next(err);
+    next();
+  });
+}

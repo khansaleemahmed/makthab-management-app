@@ -40,13 +40,96 @@ const CONTENT_W = PAGE_W - MARGIN_X * 2;
 
 type Rgb = [number, number, number];
 
-interface Cmd {
+interface TextCmd {
+  type: "text";
   x: number;
   y: number;
   size: number;
   bold: boolean;
   text: string;
   color: Rgb;
+}
+
+// Stroked rectangle — x/y is the bottom-left corner (PDF `re` operator convention).
+interface RectCmd {
+  type: "rect";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: Rgb;
+  lineWidth: number;
+}
+
+interface LineCmd {
+  type: "line";
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: Rgb;
+  lineWidth: number;
+}
+
+// A JPEG image placed in a `w`x`h` box at (x, y) (bottom-left corner) —
+// `imageIndex` refers into the `images` array passed to serializePdf.
+interface ImageCmd {
+  type: "image";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  imageIndex: number;
+}
+
+type DrawCmd = TextCmd | RectCmd | LineCmd | ImageCmd;
+
+// A JPEG to embed via PDF's DCTDecode filter, which IS the JPEG codec — the
+// compressed bytes go into the PDF stream untouched, no decode/re-encode
+// needed. width/height/numComponents come from parseJpegInfo below.
+export interface EmbeddedImage {
+  bytes: Buffer;
+  width: number;
+  height: number;
+  numComponents: number;
+}
+
+// Minimal JPEG marker scanner — just enough to read the frame dimensions and
+// component count from the Start-Of-Frame segment (no decode). Throws on
+// anything that isn't a well-formed baseline/progressive JPEG.
+export function parseJpegInfo(buf: Buffer): { width: number; height: number; numComponents: number } {
+  if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) {
+    throw new Error("Not a valid JPEG (missing SOI marker)");
+  }
+  let offset = 2;
+  while (offset < buf.length - 9) {
+    if (buf[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = buf[offset + 1];
+    // SOF0-3 / SOF5-7 / SOF9-11 / SOF13-15 carry frame dimensions; excludes
+    // DHT(C4)/JPG(C8)/DAC(CC), which share the numeric range but aren't SOF.
+    const isSof =
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf);
+    if (isSof) {
+      return {
+        height: buf.readUInt16BE(offset + 5),
+        width: buf.readUInt16BE(offset + 7),
+        numComponents: buf.readUInt8(offset + 9),
+      };
+    }
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      offset += 2; // markers with no payload length
+      continue;
+    }
+    if (marker === 0xd9) break; // EOI
+    offset += 2 + buf.readUInt16BE(offset + 2);
+  }
+  throw new Error("Could not find a JPEG frame header (unsupported or corrupt file)");
 }
 
 const BLACK: Rgb = [0, 0, 0];
@@ -97,8 +180,8 @@ function estTextWidth(s: string, size: number, _bold = false): number {
 }
 
 // Lay a PdfDoc out into a list of pages, each a list of draw commands.
-function layout(doc: PdfDoc): Cmd[][] {
-  const pages: Cmd[][] = [[]];
+function layout(doc: PdfDoc): DrawCmd[][] {
+  const pages: DrawCmd[][] = [[]];
   let page = 0;
   let y = MARGIN_TOP;
 
@@ -116,11 +199,11 @@ function layout(doc: PdfDoc): Cmd[][] {
     color: Rgb = BLACK
   ) => {
     if (y - advance < MARGIN_BOTTOM) newPage();
-    pages[page].push({ x, y, size, bold, text, color });
+    pages[page].push({ type: "text", x, y, size, bold, text, color });
     y -= advance;
   };
   const cellAt = (text: string, size: number, bold: boolean, x: number, color: Rgb = BLACK) => {
-    pages[page].push({ x, y, size, bold, text, color });
+    pages[page].push({ type: "text", x, y, size, bold, text, color });
   };
   const center = (text: string, size: number, bold: boolean) => {
     const w = estTextWidth(text, size, bold);
@@ -239,28 +322,49 @@ function layout(doc: PdfDoc): Cmd[][] {
   }
 
   if (doc.footer) {
-    pages[page].push({ x: MARGIN_X, y: 40, size: 9, bold: false, text: doc.footer, color: BLACK });
+    pages[page].push({ type: "text", x: MARGIN_X, y: 40, size: 9, bold: false, text: doc.footer, color: BLACK });
   }
 
   return pages;
 }
 
-function contentStream(cmds: Cmd[]): string {
+function contentStream(cmds: DrawCmd[]): string {
   return cmds
     .map((c) => {
+      if (c.type === "image") {
+        // Images draw into the unit square via the CTM: scale to w/h, translate to x/y.
+        return `q\n${c.w} 0 0 ${c.h} ${c.x} ${c.y} cm\n/Im${c.imageIndex} Do\nQ`;
+      }
       const [r, g, b] = c.color;
-      const rg = `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} rg`;
-      return `${rg}\nBT /${c.bold ? "F2" : "F1"} ${c.size} Tf ${c.x} ${c.y} Td (${esc(c.text)}) Tj ET`;
+      if (c.type === "text") {
+        const rg = `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} rg`;
+        return `${rg}\nBT /${c.bold ? "F2" : "F1"} ${c.size} Tf ${c.x} ${c.y} Td (${esc(c.text)}) Tj ET`;
+      }
+      const RG = `${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} RG`;
+      const lw = `${c.lineWidth} w`;
+      if (c.type === "rect") {
+        return `${RG}\n${lw}\n${c.x} ${c.y} ${c.w} ${c.h} re S`;
+      }
+      return `${RG}\n${lw}\n${c.x1} ${c.y1} m ${c.x2} ${c.y2} l S`;
     })
     .join("\n");
 }
 
 export function renderPdf(doc: PdfDoc): Buffer {
-  const pages = layout(doc);
+  return serializePdf(layout(doc));
+}
+
+// Serialise a list of pages (each a list of draw commands) into a minimal,
+// valid PDF-1.4 byte stream — the shared backend for both renderPdf (tabular
+// reports) and renderReceiptPdf (the bordered fee-receipt card). `images`
+// are embedded as XObjects and shared across every page's /Resources (simplest
+// correct option — an unreferenced resource entry is harmless, and receipts
+// only ever carry at most one image anyway).
+function serializePdf(pages: DrawCmd[][], images: EmbeddedImage[] = []): Buffer {
   const nPages = pages.length;
 
   // Object numbering: 1 catalog, 2 pages, 3 F1, 4 F2, then per page a page obj
-  // and a content obj.
+  // and a content obj, then one object per embedded image.
   const objects: string[] = [];
   const pageObjNums: number[] = [];
   for (let i = 0; i < nPages; i++) pageObjNums.push(5 + i * 2);
@@ -270,13 +374,31 @@ export function renderPdf(doc: PdfDoc): Buffer {
   objects[3] = `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>`;
   objects[4] = `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>`;
 
+  const imageBaseObjNum = 5 + nPages * 2;
+  const imageObjNums = images.map((_, i) => imageBaseObjNum + i);
+  images.forEach((img, i) => {
+    const colorSpace = img.numComponents === 1 ? "DeviceGray" : "DeviceRGB";
+    // The JPEG's own compressed bytes go in as-is (DCTDecode = the JPEG codec).
+    // latin1 round-trips arbitrary binary losslessly (1 byte <-> 1 code point),
+    // matching how content streams are already handled below.
+    const raw = img.bytes.toString("latin1");
+    objects[imageObjNums[i]] =
+      `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} ` +
+      `/ColorSpace /${colorSpace} /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.bytes.length} >>\n` +
+      `stream\n${raw}\nendstream`;
+  });
+  const xObjectDict =
+    images.length > 0
+      ? ` /XObject << ${imageObjNums.map((n, i) => `/Im${i} ${n} 0 R`).join(" ")} >>`
+      : "";
+
   pages.forEach((cmds, i) => {
     const pageNum = 5 + i * 2;
     const contentNum = 6 + i * 2;
     const stream = contentStream(cmds);
     objects[pageNum] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] ` +
-      `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentNum} 0 R >>`;
+      `/Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xObjectDict} >> /Contents ${contentNum} 0 R >>`;
     objects[contentNum] = `<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`;
   });
 
@@ -297,4 +419,166 @@ export function renderPdf(doc: PdfDoc): Buffer {
   const trailer = `trailer\n<< /Size ${total + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
 
   return Buffer.from(body + xref + trailer, "latin1");
+}
+
+// ---------------------------------------------------------------------------
+// Fee receipt — a single bordered card (modelled on the institution's printed
+// receipt book), distinct from the tabular PdfDoc layout above.
+// ---------------------------------------------------------------------------
+
+export interface ReceiptDoc {
+  org: { name: string; address: string };
+  receiptNo: string;
+  /** Display-ready date, e.g. "05-Jul-2026". */
+  date: string;
+  studentName: string;
+  admissionNo: string;
+  /** Display-ready label, e.g. "Monthly Fee". */
+  feeType: string;
+  /** Display-ready period, e.g. "July 2026" or "2024". */
+  period: string;
+  amountPaid: number;
+  /**
+   * The Admin/Accountant who collected this payment, shown as an authorized
+   * signatory. `image` (a parsed JPEG, see parseJpegInfo) is optional — a
+   * staff member who hasn't uploaded a signature yet still gets a printed
+   * name/role line, just without the image above it.
+   */
+  signature?: { image?: EmbeddedImage; staffName: string; staffRole: string };
+}
+
+const RECEIPT_BORDER_COLOR: Rgb = hexRgb("#1F4E79");
+const RECEIPT_LABEL_COLOR: Rgb = hexRgb("#404040");
+const RECEIPT_RULE_COLOR: Rgb = hexRgb("#BFBFBF");
+const RECEIPT_AMOUNT_COLOR: Rgb = hexRgb("#1F4E79");
+
+// Shrink `size` down to `minSize` until `text` fits `maxW`, mirroring the
+// report-title auto-shrink in layout() above.
+function fitSize(text: string, maxSize: number, minSize: number, maxW: number, bold: boolean): number {
+  let size = maxSize;
+  while (size > minSize && estTextWidth(text, size, bold) > maxW) size -= 1;
+  return size;
+}
+
+function layoutReceipt(doc: ReceiptDoc): { cmds: DrawCmd[]; images: EmbeddedImage[] } {
+  const cmds: DrawCmd[] = [];
+  const images: EmbeddedImage[] = [];
+  const text = (x: number, y: number, t: string, size: number, bold: boolean, color: Rgb = BLACK) =>
+    cmds.push({ type: "text", x, y, size, bold, text: t, color });
+  const rect = (x: number, y: number, w: number, h: number, color: Rgb, lineWidth: number) =>
+    cmds.push({ type: "rect", x, y, w, h, color, lineWidth });
+  const hRule = (x1: number, y: number, x2: number, color: Rgb = RECEIPT_RULE_COLOR, lineWidth = 0.75) =>
+    cmds.push({ type: "line", x1, y1: y, x2, y2: y, color, lineWidth });
+  const image = (x: number, y: number, w: number, h: number, img: EmbeddedImage) => {
+    images.push(img);
+    cmds.push({ type: "image", x, y, w, h, imageIndex: images.length - 1 });
+  };
+  const centerX = (t: string, size: number, bold: boolean, boxX: number, boxW: number) =>
+    boxX + Math.max(0, (boxW - estTextWidth(t, size, bold)) / 2);
+  const rightX = (t: string, size: number, bold: boolean, edgeX: number) =>
+    edgeX - estTextWidth(t, size, bold);
+
+  const BOX_X = 60;
+  const BOX_W = PAGE_W - BOX_X * 2;
+  const BOX_TOP = 790;
+  const BOX_H = 400;
+  const BOX_BOTTOM = BOX_TOP - BOX_H;
+  const PAD = 18;
+  const innerLeft = BOX_X + PAD;
+  const innerRight = BOX_X + BOX_W - PAD;
+
+  rect(BOX_X, BOX_BOTTOM, BOX_W, BOX_H, RECEIPT_BORDER_COLOR, 1.5);
+
+  let y = BOX_TOP - PAD - 8;
+
+  // Header row: Receipt No (left) — FEE RECEIPT (center) — Date (right).
+  text(innerLeft, y, `Receipt No: ${doc.receiptNo}`, 9, false, RECEIPT_LABEL_COLOR);
+  text(centerX("FEE RECEIPT", 14, true, BOX_X, BOX_W), y - 1, "FEE RECEIPT", 14, true, RECEIPT_BORDER_COLOR);
+  const dateLabel = `Date: ${doc.date}`;
+  text(rightX(dateLabel, 9, false, innerRight), y, dateLabel, 9, false, RECEIPT_LABEL_COLOR);
+  y -= 16;
+  hRule(innerLeft, y, innerRight);
+  y -= 24;
+
+  // Institution letterhead, centered.
+  const nameSize = fitSize(doc.org.name, 15, 10, BOX_W - PAD * 2, true);
+  text(centerX(doc.org.name, nameSize, true, BOX_X, BOX_W), y, doc.org.name, nameSize, true, ORG_NAME_COLOR);
+  y -= nameSize + 5;
+  if (doc.org.address) {
+    const addrSize = fitSize(doc.org.address, 10, 7, BOX_W - PAD * 2, false);
+    text(centerX(doc.org.address, addrSize, false, BOX_X, BOX_W), y, doc.org.address, addrSize, false, ORG_ADDRESS_COLOR);
+    y -= addrSize + 6;
+  }
+  y -= 6;
+  hRule(innerLeft, y, innerRight);
+  y -= 26;
+
+  // Labeled fields, each with a fill-in-the-blank style rule beneath it.
+  // Values are truncated to their available width (label-to-border) so an
+  // unusually long value (e.g. a long student name) can't overflow past the
+  // card's border — same defensive pattern as the table columns in layout().
+  const LABEL_W = 130;
+  const fieldRow = (label: string, value: string, opts?: { bold?: boolean; color?: Rgb; size?: number }) => {
+    const size = opts?.size ?? 11;
+    const valueX = innerLeft + LABEL_W;
+    const maxChars = Math.max(4, Math.floor((innerRight - valueX) / (size * CHAR_WIDTH_EM)));
+    text(innerLeft, y, label, size, true, RECEIPT_LABEL_COLOR);
+    text(valueX, y, truncate(value || "-", maxChars), size, opts?.bold ?? false, opts?.color ?? BLACK);
+    y -= 8;
+    hRule(innerLeft, y, innerRight);
+    y -= 22;
+  };
+
+  fieldRow("Student Name", doc.studentName);
+  fieldRow("Admission No", doc.admissionNo);
+  fieldRow("Fee Type", doc.feeType);
+  fieldRow("Period", doc.period);
+  fieldRow("Payment Date", doc.date);
+  fieldRow("Amount Paid", formatCurrency(doc.amountPaid), {
+    bold: true,
+    color: RECEIPT_AMOUNT_COLOR,
+    size: 13,
+  });
+
+  y -= 2;
+  const thankYou = "Thank you for your payment.";
+  text(centerX(thankYou, 10, false, BOX_X, BOX_W), y, thankYou, 10, false, RECEIPT_LABEL_COLOR);
+
+  // Two signature lines anchored to the bottom of the card (independent of
+  // the field stack above — there's always headroom, see the sizing note
+  // below): the collecting staff member's authorized signature on the left,
+  // the fee-payer's on the right (blank, for a printed copy).
+  const sigY = BOX_BOTTOM + PAD + 16;
+  const colW = 150;
+
+  const authX1 = innerLeft;
+  const authX2 = authX1 + colW;
+  if (doc.signature?.image) {
+    const imgW = 90;
+    const imgH = 26;
+    image(authX1 + (colW - imgW) / 2, sigY + 5, imgW, imgH, doc.signature.image);
+  }
+  hRule(authX1, sigY, authX2);
+  const staffLabel = doc.signature
+    ? `${doc.signature.staffName} (${doc.signature.staffRole})`
+    : "";
+  text(centerX(staffLabel || "Authorized Signatory", 8, false, authX1, colW), sigY - 10, staffLabel || "Authorized Signatory", 8, false, RECEIPT_LABEL_COLOR);
+
+  const sigX2 = innerRight;
+  const sigX1 = sigX2 - colW;
+  hRule(sigX1, sigY, sigX2);
+  const sigLabel = "Receiver's Signature";
+  text(centerX(sigLabel, 8, false, sigX1, colW), sigY - 10, sigLabel, 8, false, RECEIPT_LABEL_COLOR);
+
+  return { cmds, images };
+}
+
+// Render a single fee receipt as a bordered card near the top of an A4 page,
+// modelled on the institution's printed receipt book (see docs — the six
+// fields below plus receipt no/date are the ones specified for this template;
+// BOX_H=400 leaves comfortable headroom under the six field rows + footer
+// before it would ever reach the signature line's fixed y-position).
+export function renderReceiptPdf(doc: ReceiptDoc): Buffer {
+  const { cmds, images } = layoutReceipt(doc);
+  return serializePdf([cmds], images);
 }
