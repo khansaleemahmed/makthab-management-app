@@ -7,6 +7,7 @@ import { SignupPage } from '@/features/auth/SignupPage';
 import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { StudentsPage } from '@/features/students/StudentsPage';
+import { ProfilePage } from '@/features/profile/ProfilePage';
 import { ClassesPage } from '@/features/classes/ClassesPage';
 import { FeesPage } from '@/features/fees/FeesPage';
 import { AttendancePage } from '@/features/attendance/AttendancePage';
@@ -30,6 +31,7 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route path="students" element={<StudentsPage />} />
 
             <Route element={<RequirePermission resource="classes" action="view" />}>

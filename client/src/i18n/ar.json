@@ -41,6 +41,7 @@
     "active": "نشط",
     "inactive": "غير نشط",
     "logout": "تسجيل الخروج",
+    "profile": "الملف الشخصي",
     "language": "اللغة",
     "theme": "المظهر",
     "academicYear": "العام الدراسي",
@@ -80,7 +81,21 @@
     "verify": "تحقق",
     "backToSignIn": "العودة لتسجيل الدخول",
     "alreadyHaveAccount": "لديك حساب بالفعل؟",
-    "forgotPassword": "نسيت كلمة المرور؟"
+    "forgotPassword": "نسيت كلمة المرور؟",
+    "changePassword": "تغيير كلمة المرور",
+    "currentPassword": "كلمة المرور الحالية",
+    "newPassword": "كلمة المرور الجديدة",
+    "confirmPassword": "تأكيد كلمة المرور",
+    "passwordChanged": "تم تغيير كلمة المرور بنجاح"
+  },
+  "profile": {
+    "title": "الملف الشخصي",
+    "username": "اسم المستخدم",
+    "email": "البريد الإلكتروني",
+    "phone": "الهاتف",
+    "whatsappNo": "رقم واتساب",
+    "address": "العنوان",
+    "changePasswordHint": "قم بتحديث كلمة المرور المستخدمة لتسجيل الدخول."
   },
   "finance": {
     "subtitle": "المصروفات ورواتب الموظفين هذا الشهر."

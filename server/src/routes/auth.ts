@@ -9,9 +9,11 @@ import {
   resendOtpRequestSchema,
   forgotPasswordRequestSchema,
   resetPasswordRequestSchema,
+  changePasswordRequestSchema,
   type SignupRequest,
   type ForgotPasswordRequest,
   type LogoutRequest,
+  type ChangePasswordRequest,
 } from "@makthab/shared";
 import {
   userRepository,
@@ -21,6 +23,7 @@ import {
   isUniqueConstraintError,
 } from "../db";
 import { signAccessToken, verifyAccessToken } from "../lib/jwt";
+import { requireAuth } from "../middleware/auth";
 import { resolveRoleAccess } from "../lib/permissions";
 import { asyncHandler } from "../lib/asyncHandler";
 import { validateBody } from "../middleware/validate";
@@ -275,6 +278,97 @@ authRouter.post(
     // Password change invalidates every outstanding refresh session.
     await revokeAllSessionsForUser(consumed.userId);
     res.json({ data: { ok: true, message: "Password updated. You can sign in now." } });
+  })
+);
+
+// POST /auth/change-password — self-service change while signed in. Requires
+// the current password (unlike the admin-only /users/:id/reset-password) so a
+// stolen access token alone can't take over the account.
+authRouter.post(
+  "/change-password",
+  authRateLimiter,
+  requireAuth,
+  validateBody(changePasswordRequestSchema),
+  asyncHandler(async (req, res) => {
+    const { currentPassword, newPassword } = req.body as ChangePasswordRequest;
+    const userId = req.user!.sub;
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new AppError(401, "unauthorized", "Account no longer exists");
+    }
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+      const meta = clientMeta(req);
+      await recordAudit({
+        userId,
+        action: "change_password",
+        entity: "auth",
+        outcome: "failure",
+        additionalDetails: { reason: "bad_current_password" },
+        ...meta,
+      });
+      throw new AppError(401, "invalid_credentials", "Current password is incorrect");
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await userRepository.setPassword(userId, passwordHash);
+    // Password change invalidates every outstanding refresh session, including
+    // this one — issue a fresh pair below so the current tab stays signed in.
+    await revokeAllSessionsForUser(userId);
+
+    const role = req.user!.role;
+    const { permissionMatrix, permissionsVersion } = await resolveRoleAccess(role);
+    const accessToken = signAccessToken({
+      sub: userId,
+      staffId: req.user!.staffId,
+      username: req.user!.username,
+      role,
+      permissionMatrix,
+      permissionsVersion,
+    });
+    const meta = clientMeta(req);
+    const refreshToken = await issueRefreshToken({
+      userId,
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    });
+
+    await recordAudit({
+      userId,
+      action: "change_password",
+      entity: "auth",
+      outcome: "success",
+      ...meta,
+    });
+
+    res.json({ data: { accessToken, refreshToken, message: "Password updated." } });
+  })
+);
+
+// GET /auth/me — the signed-in user's own profile, for the Profile page.
+// requireAuth only: this is the caller's own data, not gated by users/admin
+// resource permissions.
+authRouter.get(
+  "/me",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const user = await userRepository.findByIdWithStaff(req.user!.sub);
+    if (!user) {
+      throw new AppError(401, "unauthorized", "Account no longer exists");
+    }
+    res.json({
+      data: {
+        id: user.id,
+        fullName: user.staff.fullName,
+        username: user.username,
+        email: user.email,
+        phone: user.phone,
+        whatsappNo: user.staff.whatsappNo,
+        address: user.staff.address,
+        role: user.role,
+        status: user.status,
+      },
+    });
   })
 );
 

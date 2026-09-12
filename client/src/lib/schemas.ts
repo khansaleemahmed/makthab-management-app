@@ -18,6 +18,7 @@ import {
   studentStatusSchema,
   contributorTypeSchema,
   moodEngagementSchema,
+  strongPasswordSchema,
 } from '@makthab/shared';
 
 const requiredDate = z.string().min(1, 'Required');
@@ -142,6 +143,25 @@ export const userPasswordResetSchema = z
     path: ['confirmPassword'],
   });
 export type UserPasswordResetInput = z.infer<typeof userPasswordResetSchema>;
+
+// Self-service change-password (UserMenu dialog). Reuses the shared strong-
+// password rule — signup/forgot-password/change-password enforce the same
+// policy; only admin-provisioned resets stay at the weaker min(6).
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Required'),
+    newPassword: strongPasswordSchema,
+    confirmPassword: z.string().min(1, 'Required'),
+  })
+  .refine((v) => v.newPassword === v.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
+  .refine((v) => v.currentPassword !== v.newPassword, {
+    message: 'New password must be different from the current password',
+    path: ['newPassword'],
+  });
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
 export const orgProfileCreateSchema = z.object({
   name: z.string().trim().min(1, 'Required'),

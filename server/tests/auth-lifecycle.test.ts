@@ -203,4 +203,84 @@ describeApi("auth signup / OTP / approval / forgot-password", () => {
       .send({ username, password });
     expect(loginFail.status).toBe(401);
   });
+
+  it("POST /auth/change-password requires auth, verifies current password, and rotates tokens", async () => {
+    const username = uniq();
+    const password = "Secret123";
+    const signup = await request(app())
+      .post(`${API}/auth/signup`)
+      .send({
+        fullName: "Change Password User",
+        username,
+        password,
+        email: `${username}@example.com`,
+        phone: "9012345678",
+        otpMethod: "email",
+      });
+    const { challengeId, devOtp } = signup.body.data;
+    await request(app()).post(`${API}/auth/verify-otp`).send({ challengeId, code: devOtp });
+
+    const adminToken = await login(CREDS.admin.username, CREDS.admin.password);
+    const list = await request(app())
+      .get(`${API}/users`)
+      .query({ status: "pending_approval", limit: 100 })
+      .set(bearer(adminToken));
+    const pending = list.body.data.items.find((u: { username: string }) => u.username === username);
+    await request(app())
+      .post(`${API}/users/${pending.id}/approve`)
+      .set(bearer(adminToken))
+      .send({ role: "Teacher" });
+
+    const token = await login(username, password);
+    expect(token).toBeTruthy();
+
+    // No auth -> 401
+    const noAuth = await request(app())
+      .post(`${API}/auth/change-password`)
+      .send({ currentPassword: password, newPassword: "NewSecret123" });
+    expect(noAuth.status).toBe(401);
+
+    // Wrong current password -> 401
+    const wrongCurrent = await request(app())
+      .post(`${API}/auth/change-password`)
+      .set(bearer(token))
+      .send({ currentPassword: "WrongPass1", newPassword: "NewSecret123" });
+    expect(wrongCurrent.status).toBe(401);
+
+    // Weak new password -> 400 Zod
+    const weakNew = await request(app())
+      .post(`${API}/auth/change-password`)
+      .set(bearer(token))
+      .send({ currentPassword: password, newPassword: "weak" });
+    expect(weakNew.status).toBe(400);
+    expect(weakNew.body.error.code).toBe("validation_error");
+
+    // Same as current -> 400 Zod (refine)
+    const sameAsOld = await request(app())
+      .post(`${API}/auth/change-password`)
+      .set(bearer(token))
+      .send({ currentPassword: password, newPassword: password });
+    expect(sameAsOld.status).toBe(400);
+
+    // Success -> fresh token pair
+    const newPassword = "NewSecret123";
+    const ok = await request(app())
+      .post(`${API}/auth/change-password`)
+      .set(bearer(token))
+      .send({ currentPassword: password, newPassword });
+    expect(ok.status).toBe(200);
+    expect(ok.body.data.accessToken).toBeTruthy();
+    expect(ok.body.data.refreshToken).toBeTruthy();
+
+    // Old password no longer works, new one does
+    const loginOld = await request(app())
+      .post(`${API}/auth/login`)
+      .send({ username, password });
+    expect(loginOld.status).toBe(401);
+
+    const loginNew = await request(app())
+      .post(`${API}/auth/login`)
+      .send({ username, password: newPassword });
+    expect(loginNew.status).toBe(200);
+  });
 });

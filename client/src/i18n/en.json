@@ -41,6 +41,7 @@
     "active": "Active",
     "inactive": "Inactive",
     "logout": "Log out",
+    "profile": "Profile",
     "language": "Language",
     "theme": "Theme",
     "academicYear": "Academic Year",
@@ -80,7 +81,21 @@
     "verify": "Verify",
     "backToSignIn": "Back to sign in",
     "alreadyHaveAccount": "Already have an account?",
-    "forgotPassword": "Forgot password?"
+    "forgotPassword": "Forgot password?",
+    "changePassword": "Change password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "passwordChanged": "Password changed successfully"
+  },
+  "profile": {
+    "title": "Profile",
+    "username": "Username",
+    "email": "Email",
+    "phone": "Phone",
+    "whatsappNo": "WhatsApp No.",
+    "address": "Address",
+    "changePasswordHint": "Update the password you use to sign in."
   },
   "finance": {
     "subtitle": "Expenses and salary payments this month."

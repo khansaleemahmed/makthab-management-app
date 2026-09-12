@@ -1,5 +1,5 @@
 import request from "supertest";
-import { API, CREDS, describeApi, loadApp } from "./helpers";
+import { API, CREDS, bearer, describeApi, loadApp, login } from "./helpers";
 
 // Infra + Auth (doc §6 auth, §13.1 security, BUILD_CONTRACT §2/§3)
 describeApi("infra + auth", () => {
@@ -58,4 +58,21 @@ describeApi("infra + auth", () => {
   });
 
   it.todo("passwords stored as bcrypt hashes, never returned in any response (§13.1)");
+
+  it("GET /auth/me without token -> 401", async () => {
+    const r = await request(app()).get(`${API}/auth/me`);
+    expect(r.status).toBe(401);
+    expect(r.body).toHaveProperty("error");
+  });
+
+  it("GET /auth/me with valid token -> 200 with own profile, no passwordHash", async () => {
+    const token = await login(CREDS.admin.username, CREDS.admin.password);
+    const r = await request(app()).get(`${API}/auth/me`).set(bearer(token));
+    expect(r.status).toBe(200);
+    expect(r.body.data).toMatchObject({ username: CREDS.admin.username });
+    expect(r.body.data).toHaveProperty("fullName");
+    expect(r.body.data).toHaveProperty("role");
+    expect(r.body.data).toHaveProperty("status");
+    expect(r.body.data).not.toHaveProperty("passwordHash");
+  });
 });

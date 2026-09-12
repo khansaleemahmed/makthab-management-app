@@ -173,6 +173,35 @@ export const resetPasswordRequestSchema = z.object({
 });
 export type ResetPasswordRequest = z.infer<typeof resetPasswordRequestSchema>;
 
+// POST /auth/change-password — self-service, while authenticated. Requires the
+// current password (unlike admin-provisioned reset-password) and enforces the
+// same strong-password rule as signup/forgot-password.
+export const changePasswordRequestSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: strongPasswordSchema,
+  })
+  .refine((val) => val.currentPassword !== val.newPassword, {
+    message: "New password must be different from the current password",
+    path: ["newPassword"],
+  });
+export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
+
+// GET /auth/me — the signed-in user's own profile (id/staff fields only, no
+// permission matrix — that already lives in the JWT / authStore).
+export const meResponseSchema = z.object({
+  id: z.number().int(),
+  fullName: z.string(),
+  username: z.string(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  whatsappNo: z.string().nullable(),
+  address: z.string().nullable(),
+  role: z.string(),
+  status: userAccountStatusSchema,
+});
+export type MeResponse = z.infer<typeof meResponseSchema>;
+
 // POST /users/:id/approve
 export const userApproveSchema = z.object({
   role: z.string().trim().min(1).optional(),

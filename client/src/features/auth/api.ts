@@ -10,6 +10,7 @@ import type {
   ForgotPasswordResponse,
   ResetPasswordRequest,
   ResendOtpRequest,
+  ChangePasswordRequest,
 } from '@makthab/shared';
 import { api, unwrap } from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
@@ -61,6 +62,21 @@ export function useResetPassword() {
   return useMutation({
     mutationFn: async (input: ResetPasswordRequest) =>
       unwrap<{ ok: boolean; message: string }>((await api.post('/auth/reset-password', input)).data),
+  });
+}
+
+export function useChangePassword() {
+  const setSession = useAuthStore((s) => s.setSession);
+  return useMutation({
+    mutationFn: async (input: ChangePasswordRequest) =>
+      unwrap<{ accessToken: string; refreshToken: string; message: string }>(
+        (await api.post('/auth/change-password', input)).data,
+      ),
+    onSuccess: (data) => {
+      // Password change revokes every refresh session including this one;
+      // the server issues a fresh pair so the current tab stays signed in.
+      setSession(data.accessToken, data.refreshToken);
+    },
   });
 }
 
